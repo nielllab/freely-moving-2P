@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 import fmr2e
 
-def deinterlace(video, cfg=None, exp_fps=30, quiet=False,
+def deinterlace(video, exp_fps=30, quiet=False,
                 allow_overwrite=False, do_rotation=False):
         """ Deinterlace videos and shift timestamps to match new video frames.
 
@@ -213,7 +213,7 @@ def pose_estimation(self):
         self.batch_dlc_analysis(vids2run, cam_project)
 
 
-def pack_video_frames(video_path, dwnsmpl=False):
+def pack_video_frames(video_path, dwnsmpl=1):
     
     # open the .avi file
     vidread = cv2.VideoCapture(video_path)

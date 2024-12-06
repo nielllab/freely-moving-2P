@@ -19,3 +19,8 @@ from fmr2e.utils.files import (
     write_h5,
     read_h5
 )
+
+from fmr2e.utils.filter import (
+    convfilt
+)
+)

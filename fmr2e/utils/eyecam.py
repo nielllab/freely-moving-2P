@@ -388,13 +388,9 @@ class Eyecam():
             'ellipse_phi'
         ]
 
-        ellipse_out = xr.DataArray(ellipse_df,
-            coords=[('frame', range(0, len(ellipse_df))),
-                    ('ellipse_params', ellipse_param_names)],
-            dims=['frame', 'ellipse_params'])
-
-        ellipse_out.attrs['cam_center_x'] = cam_cent[0,0]
-        ellipse_out.attrs['cam_center_y'] = cam_cent[1,0]
+        ellipse_dict = ellipse_df.to_dict()
+        ellipse_dict['cam_center_x'] = cam_cent[0,0]
+        ellipse_dict['cam_center_y'] = cam_cent[1,0]
         
         fig1, [[ax1,ax2,ax3,ax4],[ax5,ax6,ax7,ax8]] = plt.subplots(3,2, figsize=(8.5,11))
 
@@ -468,23 +464,10 @@ class Eyecam():
         # Save out camera center and scale as np array (but only if this is
         # a freely moving recording).
             
-        calib_props_dict = {
-            'cam_cent_x':float(cam_cent[0]),
-            'cam_cent_y':float(cam_cent[1]),
-            'scale':float(scale),
-            'regression_r':float(r_value),
-            'regression_m':float(slope)
-        }
+        ellipse_dict['scale'] = float(scale)
+        ellipse_dict['regression_r'] = float(r_value)
+        ellipse_dict['regression_m'] = float(slope)
 
-        _savename = '{}{}_fm_eyecameracalc_props.json'.format(self.recording_name,
-                                                                  self.camname)
-        calib_props_dict_savepath = os.path.join(self.recording_path, _savename)
-
-        print('Saving calibration parameters to '+ calib_props_dict_savepath)
-            
-        with open(calib_props_dict_savepath, 'w') as f:
-            json.dump(calib_props_dict, f)
-        
         # Figures of scale and center
         try:
             ax7.plot(xvals[::fig_dwnsmpl],
@@ -519,170 +502,169 @@ class Eyecam():
             patch0 = mpatches.Patch(color='y', label='all pts')
             patch1 = mpatches.Patch(color='y', label='calibration pts')
             plt.legend(handles=[patch0, patch1])
-
-            pdf.savefig()
-            plt.close()
-
         except Exception as e:
-            print('Figure error in plots of scale and camera center')
             print(e)
+        
+        fig1.tight_layout()
+        pdf.savefig()
+        plt.close()
 
         pdf.close()
 
-        self.ellipse_params = ellipse_out
+        return ellipse_dict
 
 
-    def eye_diagnostic_video(self):
-        """ Plot video of eye tracking.
-        """
+    # def eye_diagnostic_video(self, video_path, ellipse_out):
+    #     """ Plot video of eye tracking.
+    #     """
 
-        # Read in video, set up save file
-        vidread = cv2.VideoCapture(self.video_path)
-        width = int(vidread.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(vidread.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    #     # Read in video, set up save file
+    #     vidread = cv2.VideoCapture(video_path)
+    #     width = int(vidread.get(cv2.CAP_PROP_FRAME_WIDTH))
+    #     height = int(vidread.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        _vidname = '{}_{}_plot.avi'.format(self.recording_name, self.camname)
-        savepath = os.path.join(self.recording_path, _vidname)
+    #     _vidname = '{}_{}_plot.avi'.format(self.recording_name, self.camname)
+    #     savepath = os.path.join(self.recording_path, _vidname)
 
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        out_vid = cv2.VideoWriter(savepath, fourcc, 60.0, (width, height))
+    #     fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    #     out_vid = cv2.VideoWriter(savepath, fourcc, 60.0, (width, height))
 
-        # Only do the first number of frames (limit of frames to use should
-        # be set in cfg dict)
-        nFrames = int(vidread.get(cv2.CAP_PROP_FRAME_COUNT))
-        if self.cfg['save_frameN'] > nFrames:
-            num_save_frames = nFrames
-        else:
-            num_save_frames = self.cfg['save_frameN']
+    #     # Only do the first number of frames (limit of frames to use should
+    #     # be set in cfg dict)
+    #     nFrames = int(vidread.get(cv2.CAP_PROP_FRAME_COUNT))
+    #     if self.cfg['save_frameN'] > nFrames:
+    #         num_save_frames = nFrames
+    #     else:
+    #         num_save_frames = self.cfg['save_frameN']
 
-        # Iterate through frames
-        for frame_num in tqdm(range(num_save_frames)):
+    #     # Iterate through frames
+    #     for frame_num in tqdm(range(num_save_frames)):
             
-            # Read frame and make sure it's read in correctly
-            ret, frame = vidread.read()
-            if not ret:
-                break
+    #         # Read frame and make sure it's read in correctly
+    #         ret, frame = vidread.read()
+    #         if not ret:
+    #             break
             
-            # Plot on the frame if there is data to be used
-            if self.xrpts is not None and self.ellipse_params is not None:
+    #         # Plot on the frame if there is data to be used
+    #         if self.xrpts is not None and self.ellipse_params is not None:
                 
-                try:
-                    # Get out ellipse long/short axes and put into tuple
-                    ellipse_axes = (int(self.ellipse_params.sel(                        \
-                                        frame=frame_num,                                \
-                                        ellipse_params='longaxis').values),             \
-                                    int(self.ellipse_params.sel(                        \
-                                        frame=frame_num,                                \
-                                        ellipse_params='shortaxis').values))
+    #             try:
+    #                 # Get out ellipse long/short axes and put into tuple
+    #                 ellipse_axes = (int(self.ellipse_params.sel(                        \
+    #                                     frame=frame_num,                                \
+    #                                     ellipse_params='longaxis').values),             \
+    #                                 int(self.ellipse_params.sel(                        \
+    #                                     frame=frame_num,                                \
+    #                                     ellipse_params='shortaxis').values))
 
-                    # Get out ellipse phi and round to int
-                    # Note: this is ellipse_phi not phi
-                    ellipse_phi = int(np.rad2deg(self.ellipse_params.sel(
-                                        frame=frame_num,
-                                        ellipse_params='ellipse_phi').values))
+    #                 # Get out ellipse phi and round to int
+    #                 # Note: this is ellipse_phi not phi
+    #                 ellipse_phi = int(np.rad2deg(self.ellipse_params.sel(
+    #                                     frame=frame_num,
+    #                                     ellipse_params='ellipse_phi').values))
 
-                    # Get ellipse center out, round to int, and put into tuple
-                    ellipse_cent = (int(self.ellipse_params.sel(
-                                        frame=frame_num,
-                                        ellipse_params='X0').values), 
-                                    int(self.ellipse_params.sel(
-                                        frame=frame_num,
-                                        ellipse_params='Y0').values))
+    #                 # Get ellipse center out, round to int, and put into tuple
+    #                 ellipse_cent = (int(self.ellipse_params.sel(
+    #                                     frame=frame_num,
+    #                                     ellipse_params='X0').values), 
+    #                                 int(self.ellipse_params.sel(
+    #                                     frame=frame_num,
+    #                                     ellipse_params='Y0').values))
                     
-                    # Update this frame with an ellipse
-                    # ellipse plotted in blue
-                    frame = cv2.ellipse(frame, ellipse_cent, ellipse_axes,
-                                        ellipse_phi, 0, 360, (255,0,0), 2) 
+    #                 # Update this frame with an ellipse
+    #                 # ellipse plotted in blue
+    #                 frame = cv2.ellipse(frame, ellipse_cent, ellipse_axes,
+    #                                     ellipse_phi, 0, 360, (255,0,0), 2) 
                 
-                # Skip if the ell data from this frame are bad
-                except (ValueError, KeyError):
-                    pass
+    #             # Skip if the ell data from this frame are bad
+    #             except (ValueError, KeyError):
+    #                 pass
 
-                try:
-                    # iterate through each point in the list
-                    for k in range(0, len(self.xrpts.isel(frame=frame_num)), 3):
-                        # get the point center of each point num, k
-                        pt_cent = (int(self.xrpts.isel(frame=frame_num,
-                                                       point_loc=k).values),
-                                   int(self.xrpts.isel(frame=frame_num,
-                                                       point_loc=k+1).values))
-                        # compare to threshold set in cfg and plot
-                        if self.xrpts.isel(frame=frame_num, point_loc=k+2).values < self.cfg['Lthresh']:
-                            # bad points in red
-                            frame = cv2.circle(frame, pt_cent, 3, (0,0,255), -1)
-                        elif self.xrpts.isel(frame=frame_num, point_loc=k+2).values >= self.cfg['Lthresh']:
-                            # good points in green
-                            frame = cv2.circle(frame, pt_cent, 3, (0,255,0), -1)
+    #             try:
+    #                 # iterate through each point in the list
+    #                 for k in range(0, len(self.xrpts.isel(frame=frame_num)), 3):
+    #                     # get the point center of each point num, k
+    #                     pt_cent = (int(self.xrpts.isel(frame=frame_num,
+    #                                                    point_loc=k).values),
+    #                                int(self.xrpts.isel(frame=frame_num,
+    #                                                    point_loc=k+1).values))
+    #                     # compare to threshold set in cfg and plot
+    #                     if self.xrpts.isel(frame=frame_num, point_loc=k+2).values < self.cfg['Lthresh']:
+    #                         # bad points in red
+    #                         frame = cv2.circle(frame, pt_cent, 3, (0,0,255), -1)
+    #                     elif self.xrpts.isel(frame=frame_num, point_loc=k+2).values >= self.cfg['Lthresh']:
+    #                         # good points in green
+    #                         frame = cv2.circle(frame, pt_cent, 3, (0,255,0), -1)
                 
-                except (ValueError, KeyError):
-                    pass
+    #             except (ValueError, KeyError):
+    #                 pass
 
-            out_vid.write(frame)
-        out_vid.release()
+    #         out_vid.write(frame)
+    #     out_vid.release()
 
 
-    def save_params(self):
-        """ Save the NC file of parameters.
-        """
+    # def save_params(self):
+    #     """ Save the NC file of parameters.
+    #     """
 
-        self.xrpts.name = self.camname+'_pts'
-        self.xrframes.name = self.camname+'_video'
-        self.ellipse_params.name = self.camname+'_ellipse_params'
+    #     self.xrpts.name = self.camname+'_pts'
+    #     self.xrframes.name = self.camname+'_video'
+    #     self.ellipse_params.name = self.camname+'_ellipse_params'
 
-        merged_data = [self.xrpts, self.ellipse_params, self.xrframes]
+    #     merged_data = [self.xrpts, self.ellipse_params, self.xrframes]
 
-        if self.cfg['ridge_cyclotorsion']:
+    #     if self.cfg['ridge_cyclotorsion']:
 
-            self.rfit.name = self.camname+'_pupil_radius'
-            self.shift.name = self.camname+'_omega'
-            self.rfit_conv.name = self.camname+'_conv_pupil_radius'
+    #         self.rfit.name = self.camname+'_pupil_radius'
+    #         self.shift.name = self.camname+'_omega'
+    #         self.rfit_conv.name = self.camname+'_conv_pupil_radius'
 
-            merged_data = merged_data + [self.rfit, self.shift, self.rfit_conv]
+    #         merged_data = merged_data + [self.rfit, self.shift, self.rfit_conv]
 
-        self.safe_merge(merged_data)
+    #     self.safe_merge(merged_data)
         
-        f_name = '{}_{}.nc'.format(self.recording_name, self.camname)
+    #     f_name = '{}_{}.nc'.format(self.recording_name, self.camname)
 
-        savepath = os.path.join(self.recording_path, f_name)
+    #     savepath = os.path.join(self.recording_path, f_name)
 
-        self.data.to_netcdf(savepath, engine='netcdf4',
-                    encoding = {
-                        self.camname+'_video': {"zlib": True,
-                                                "complevel": 4}})
+    #     self.data.to_netcdf(savepath, engine='netcdf4',
+    #                 encoding = {
+    #                     self.camname+'_video': {"zlib": True,
+    #                                             "complevel": 4}})
 
-        print('Saved {}'.format(savepath))
-
-
+    #     print('Saved {}'.format(savepath))
 
 
-    def process(self):
-        """ Run eyecam preprocessing.
-        """
 
-        if self.cfg['run']['deinterlace']:
-            self.deinterlace()
 
-        elif not self.cfg['run']['deinterlace'] and (self.cfg['headcams_hflip'] or self.cfg['headcams_vflip']):
-            self.flip_headcams()
+    # def process(self):
+    #     """ Run eyecam preprocessing.
+    #     """
 
-        if self.cfg['fix_eyecam_contrast']:
-            self.auto_contrast()
+    #     if self.cfg['run']['deinterlace']:
+    #         self.deinterlace()
 
-        if self.cfg['run']['pose_estimation']:
-            self.pose_estimation()
+    #     elif not self.cfg['run']['deinterlace'] and (self.cfg['headcams_hflip'] or self.cfg['headcams_vflip']):
+    #         self.flip_headcams()
 
-        if self.cfg['run']['parameters']:
+    #     if self.cfg['fix_eyecam_contrast']:
+    #         self.auto_contrast()
+
+    #     if self.cfg['run']['pose_estimation']:
+    #         self.pose_estimation()
+
+    #     if self.cfg['run']['parameters']:
             
-            self.gather_camera_files()
-            self.pack_position_data()
-            self.pack_video_frames()
+    #         self.gather_camera_files()
+    #         self.pack_position_data()
+    #         self.pack_video_frames()
 
-            self.track_pupil()
+    #         self.track_pupil()
 
-            if self.cfg['ridge_cyclotorsion']:
-                self.get_torsion_from_ridges()
+    #         if self.cfg['ridge_cyclotorsion']:
+    #             self.get_torsion_from_ridges()
 
-            if self.cfg['write_diagnostic_videos']:
-                self.eye_diagnostic_video()
+    #         if self.cfg['write_diagnostic_videos']:
+    #             self.eye_diagnostic_video()
 
-            self.save_params()
+    #         self.save_params()
