@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.backends.backend_pdf import PdfPages
 
-import fmEphys as fme
+import fmr2e
 
 
-class Eyecam(fme.Camera):
+class Eyecam():
     """ Preprocessing for head-mounted eye camera.
 
     Parameters
@@ -52,11 +52,37 @@ class Eyecam(fme.Camera):
     """
 
 
-    def __init__(self, cfg, recording_name, recording_path, camname):
-        fme.Camera.__init__(self, cfg, recording_name, recording_path, camname)
+    def __init__(self, recording_path, recording_name, cfg=None):
 
-        self.eye_fig_pts_dwnspl = 100
+        self.recording_path = recording_path
+        self.recording_name = recording_name
 
+        if cfg is None:
+            self.ridge_cyclotorsion = False
+            self.likelihood_thresh = 0.99
+            self.eye_ellipse_thresh = 0.85
+            self.eye_fig_pts_dwnspl = 100
+            self.eye_dist_thresh = 4.1
+            self.eye_pxl2cm = 24
+            self.eye_radius_thresh = 50
+            self.eye_calibration_N = 8
+            self.eye_trackable_N = 7
+        elif cfg is not None:
+            self.ridge_cyclotorsion = cfg['ridge_cyclotorsion']
+            self.likelihood_thresh = cfg['likelihood_thresh']
+            self.eye_ellipse_thresh = cfg['eye_ellipse_thresh']
+            self.eye_fig_pts_dwnspl = cfg['eye_fig_pts_dwnspl']
+            self.eye_dist_thresh = cfg['eye_dist_thresh']
+            self.eye_pxl2cm = cfg['eye_pxl2cm']
+            self.eye_radius_thresh = cfg['eye_radius_thresh']
+            self.eye_calibration_N = cfg['eye_calibration_N']
+            self.eye_trackable_N = cfg['eye_trackable_N']
+
+    def find_files(self):
+
+        self.eye_dlc_h5 = ...
+        self.eye_avi = ...
+        self.eyeT_csv = ...
 
     def fit_ellipse(self, x, y):
         """ Fit an ellipse to points labeled around the perimeter of pupil.
@@ -179,6 +205,26 @@ class Eyecam(fme.Camera):
             ellipse_dict = dict(zip(dict_keys, dict_vals))
         
         return ellipse_dict
+    
+    def split_xyl(self, xyl):
+
+        names = xyl.columns.values
+
+        x_locs = []
+        y_locs = []
+        likeli_locs = []
+        
+        # seperate the lists of point names into x, y, and likelihood
+        for loc_num in range(0, len(names)):
+            loc = names[loc_num]
+            if '_x' in loc:
+                x_locs.append(loc)
+            elif '_y' in loc:
+                y_locs.append(loc)
+            elif 'likeli' in loc:
+                likeli_locs.append(loc)
+
+        return np.array(x_locs), np.array(y_locs), np.array(likeli_locs)
 
 
     def track_pupil(self):
@@ -186,177 +232,39 @@ class Eyecam(fme.Camera):
         """
 
         # Set up the pdf to be saved out with diagnostic figures
-        pdf_name = '{}_{}_tracking_figs.pdf'.format(self.recording_name, self.camname)
+        pdf_name = '{}_eye_tracking_figs.pdf'.format(self.recording_name)
         pdf = PdfPages(os.path.join(self.recording_path, pdf_name))
-        
-        # If this is a head-fixed recording, read in existing freely moving camera
-        # center, scale, etc. The pipeline will process all fm recordings first,
-        # so it will be possible to read in fm camera calibration parameters for
-        # every hf recording.
-        if self.cfg['share_eyecal'] is True:
 
-            if 'hf' in self.recording_name:
+        # read deeplabcut file
+        xyl = fmr2e.open_dlc_h5(self.eye_dlc_h5)
+        x_vals, y_vals, likelihood = self.split_xyl(xyl)
 
-                # (Should always go for fm1 before fm2)
-                path_to_existing_props = sorted(fme.find('*fm_eyecameracalc_props.json',
-                                                             self.cfg['animal_directory']))
-                
-                if len(path_to_existing_props) == 0:
-                    print('Found no eyecam calibration json')
-                    path_to_existing_props = None
-
-                elif len(path_to_existing_props) == 1:
-                    print('Found no eyecam calibration json')
-                    path_to_existing_props = path_to_existing_props[0]
-
-                elif len(path_to_existing_props) > 1:
-                    print('Found multiple eyecam calibration json')
-                    print(path_to_existing_props[0])
-                    path_to_existing_props = path_to_existing_props[0]
-
-                if path_to_existing_props is not None:
-                    with open(path_to_existing_props, 'r') as fp:
-                        existing_camera_calib_props = json.load(fp)
-
-                elif path_to_existing_props is None:
-
-                    # If a json of paramters can't be found, though, we'll
-                    # get these values for the hf recording.
-                    existing_camera_calib_props = None
-
-            elif 'fm' in self.recording_name or self.cfg['strict_dir']:
-                existing_camera_calib_props = None
-            
-            else:
-                existing_camera_calib_props = None
-
-        elif self.cfg['share_eyecal'] is False:
-            
-            calibration_param_file = next(i for i in fme.find('*fm_eyecameracalc_props.json',  \
-                                                        self.cfg['recording_path']) if self.camname in i)
-            
-            with open(calibration_param_file, 'r') as fp:
-                existing_camera_calib_props = json.load(fp)
-
-        # Names of the different points
-        x_vals, y_vals, likeli_vals = self.split_xyl()
-        likelihood_in = likeli_vals.values
-
-        
-        if self.cfg['eye_lght'] and self.cfg['eye_lghtsub']:
-
-            # Subtract center of IR light reflection from points around the pupil.
-
-            spot_xcent = np.mean(x_vals.iloc[:,-5:], 1)
-            spot_ycent = np.mean(y_vals.iloc[:,-5:], 1)
-            spot_likelihood = likelihood_in[:,-5:].copy()
-
-            likelihood = likelihood_in[:,:-5]
-
-            x_vals = x_vals.iloc[:,:-5].subtract(spot_xcent, axis=0)
-            y_vals = y_vals.iloc[:,:-5].subtract(spot_ycent, axis=0)
-
-        elif self.cfg['eye_lght'] and not self.cfg['eye_lghtsub']:
-
-            # Drop the IR light pts without subtracting
-            x_vals = x_vals.iloc[:,:-5]
-            y_vals = y_vals.iloc[:,:-5]
-            likelihood = likelihood_in[:,:-5]
-
-        elif self.cfg['eye_crnrs_1st']:
-
-            # Handle points if they were labaled in an unexpected order.
-            x_vals = x_vals.iloc[:,2:]
-            y_vals = y_vals.iloc[:,2:]
-            likelihood = likelihood_in[:,2:]
-        
-        # Drop tear/outer eye points
-        if self.cfg['eye_crnr']:
-
-            if self.cfg['eye_lght'] and self.cfg['eye_lghtsub']:
-                x_vals = x_vals.iloc[:,:-2]
-                y_vals = y_vals.iloc[:,:-2]
-                likelihood = likelihood[:,:-2]
-
-            if not self.cfg['eye_lght'] and self.cfg['eye_lghtsub']:
-                x_vals = x_vals.iloc[:,:-2]
-                y_vals = y_vals.iloc[:,:-2]
-                likelihood = likelihood_in[:,:-2]
-
-        else:
-            likelihood = likelihood_in
-
-        pupil_count = np.sum(likelihood >= self.cfg['Lthresh'], 1)
-
-        # Get bools of when a frame is usable with the right number of
-        # points above liklelihood threshold
-        if self.cfg['eye_lghtsub']:
-            
-            # If spot subtraction is being done, we should only include frames
-            # where all five pts marked around the ir spot are good (centroid
-            # would be off otherwise)
-            spot_count = np.sum(spot_likelihood >= self.cfg['Lthresh'], 1)
-
-            usegood_eye = (pupil_count >= self.cfg['eye_useN']) &               \
-                          (spot_count >= self.cfg['eye_lghtN'])
-
-            usegood_eyecalib = (pupil_count >= self.cfg['eye_calN']) &          \
-                               (spot_count >= self.cfg['eye_lghtN'])
-            
-            usegood_reflec = (spot_count >= self.cfg['eye_lghtN'])
-
-        else:
-            usegood_eye = pupil_count >= self.cfg['eye_useN']
-            usegood_eyecalib = pupil_count >= self.cfg['eye_calN']
-        
-        # How well did reflection track?
-        if self.cfg['eye_lghtsub']:
-            plt.figure()
-            plt.plot(spot_count[0:-1:10])
-            plt.title('{:.3}% good'.format(np.mean(usegood_reflec)*100))
-            plt.ylabel('num good reflection points')
-            plt.xlabel('every 10th frame')
-            pdf.savefig()
-            plt.close()
-
-        # How well did eye track?
-        plt.figure()
-        plt.plot(pupil_count[0:-1:10])
-        plt.title('{:.3}% good'.format(np.mean(usegood_eye)*100))
-        plt.ylabel('num good pupil points')
-        plt.xlabel('every 10th frame')
-        pdf.savefig()
-        plt.close()
-
-        # Hist of eye tracking quality
-        plt.figure()
-        plt.hist(pupil_count, bins=9,
-                        range=(0,9), density=True)
-        plt.xlabel('num good eye points')
-        plt.ylabel('fraction of frames')
-        pdf.savefig()
-        plt.close()
+        pupil_count = np.sum(likelihood >= self.likelihood_thresh, 1)
+        usegood_eye = pupil_count >= self.cfg['eye_useN']
+        usegood_eyecalib = pupil_count >= self.cfg['eye_calN']
 
         # Threshold out pts more than a given distance away from nanmean of that point
         std_thresh_x = np.empty(np.shape(x_vals))
-
-        for point_loc in range(0,np.size(x_vals, 1)):
-            _val = x_vals.iloc[:,point_loc]
-            std_thresh_x[:,point_loc] = (np.abs(np.nanmean(_val) - _val)                \
-                            / self.cfg['eye_pxl2cm']) > self.cfg['eye_distthresh']
-
         std_thresh_y = np.empty(np.shape(y_vals))
 
         for point_loc in range(0,np.size(x_vals, 1)):
+            _val = x_vals.iloc[:,point_loc]
+            std_thresh_x[:,point_loc] = (np.abs(np.nanmean(_val) - _val) / self.eye_pxl2cm) > self.eye_dist_thresh
+
+        for point_loc in range(0,np.size(x_vals, 1)):
             _val = y_vals.iloc[:,point_loc]
-            std_thresh_y[:,point_loc] = (np.abs(np.nanmean(_val) - _val)                \
-                            / self.cfg['eye_pxl2cm']) > self.cfg['eye_distthresh']
+            std_thresh_y[:,point_loc] = (np.abs(np.nanmean(_val) - _val) / self.cfg['eye_pxl2cm']) > self.cfg['eye_distthresh']
 
         std_thresh_x = np.nanmean(std_thresh_x, 1)
         std_thresh_y = np.nanmean(std_thresh_y, 1)
 
         x_vals[std_thresh_x > 0] = np.nan
         y_vals[std_thresh_y > 0] = np.nan
+
+        ellipse = np.empty([len(usegood_eye), 14])
+        
+        # Step through each frame, fit an ellipse to points, and add ellipse
+        # parameters to array with data for all frames together.
 
         cols = [
             'X0',           # 0
@@ -375,10 +283,6 @@ class Eyecam(fme.Camera):
             'phi'           # 13
         ]
 
-        ellipse = np.empty([len(usegood_eye), 14])
-        
-        # Step through each frame, fit an ellipse to points, and add ellipse
-        # parameters to array with data for all frames together.
         linalgerror = 0
         for step in tqdm(range(0,len(usegood_eye))):
             
@@ -418,11 +322,11 @@ class Eyecam(fme.Camera):
         print('LinAlg error count = ' + str(linalgerror))
         
         # List of all places where the ellipse meets threshold
-        R = np.linspace(0, 2*np.pi, 100)
+        # R = np.linspace(0, 2*np.pi, 100)
 
         # (short axis / long axis) < thresh
         usegood_ellipcalb = np.where((usegood_eyecalib == True)                     \
-                & ((ellipse[:,6] / ellipse[:,5]) < self.cfg['eye_ellthresh']))
+                & ((ellipse[:,6] / ellipse[:,5]) < self.eye_ellipse_thresh))
         
         # Limit number of frames used for calibration
         f_lim = 50000
@@ -438,37 +342,22 @@ class Eyecam(fme.Camera):
 
         b = np.expand_dims(np.diag(A.T @ np.squeeze(ellipse[shortlist, 11:13].T)), axis=1)
         
-        # Only use the camera center from this recording if values were not
-        # read in from a json. In practice, this means hf recordings have
-        # their cam center thrown out and use the fm values read in.
-        if existing_camera_calib_props is None:
-            cam_cent = np.linalg.inv(A @ A.T) @ A @ b
-
-        elif existing_camera_calib_props is not None:
-            cam_cent = np.array([
-                [float(existing_camera_calib_props['cam_cent_x'])],
-                [float(existing_camera_calib_props['cam_cent_y'])]
-            ])
+        cam_cent = np.linalg.inv(A @ A.T) @ A @ b
         
         # Ellipticity and scale
         ellipticity = (ellipse[shortlist,6] / ellipse[shortlist,5]).T
         
-        if existing_camera_calib_props is None:
             
-            try:
-                scale = np.nansum(np.sqrt(1 - (ellipticity)**2) *                       \
-                (np.linalg.norm(ellipse[shortlist, 11:13] - cam_cent.T, axis=0)))       \
-                / np.sum(1 - (ellipticity)**2)
-            
-            except ValueError:
+        try:
+            scale = np.nansum(np.sqrt(1 - (ellipticity)**2) *                       \
+            (np.linalg.norm(ellipse[shortlist, 11:13] - cam_cent.T, axis=0)))       \
+            / np.sum(1 - (ellipticity)**2)
+        
+        except ValueError:
 
-                scale = np.nansum(np.sqrt(1 - (ellipticity)**2) *                       \
-                (np.linalg.norm(ellipse[shortlist, 11:13] - cam_cent.T, axis=1)))       \
-                / np.sum(1 - (ellipticity)**2)
-
-        elif existing_camera_calib_props is not None:
-
-            scale = float(existing_camera_calib_props['scale'])
+            scale = np.nansum(np.sqrt(1 - (ellipticity)**2) *                       \
+            (np.linalg.norm(ellipse[shortlist, 11:13] - cam_cent.T, axis=1)))       \
+            / np.sum(1 - (ellipticity)**2)
         
         # Pupil angles
 
@@ -477,28 +366,6 @@ class Eyecam(fme.Camera):
 
         # Vertical orientation (PHI)
         phi = np.arcsin((ellipse[:,12] - cam_cent[1]) / np.cos(theta) / scale)
-        
-
-        try:
-            plt.figure()
-            plt.plot(np.rad2deg(phi)[0:-1:10])
-            plt.title('phi')
-            plt.ylabel('deg')
-            plt.xlabel('every 10th frame')
-            pdf.savefig()
-            plt.close()
-
-            plt.figure()
-            plt.plot(np.rad2deg(theta)[0:-1:10])
-            plt.title('theta')
-            plt.ylabel('deg')
-            plt.xlabel('every 10th frame')
-            pdf.savefig()
-            plt.close()
-
-        except Exception as e:
-            print('Figure error for plots of theta, phi')
-            print(e)
 
         # Organize data to return as an xarray of most essential parameters
         ellipse_df = pd.DataFrame({
@@ -529,36 +396,54 @@ class Eyecam(fme.Camera):
         ellipse_out.attrs['cam_center_x'] = cam_cent[0,0]
         ellipse_out.attrs['cam_center_y'] = cam_cent[1,0]
         
+        fig1, [[ax1,ax2,ax3,ax4],[ax5,ax6,ax7,ax8]] = plt.subplots(3,2, figsize=(8.5,11))
+
+        # How well did eye track?
+        ax1.plot(pupil_count[0:-1:10])
+        ax1.set_title('{:.3}% good'.format(np.mean(usegood_eye)*100))
+        ax1.set_ylabel('num good pupil points')
+        ax1.set_xlabel('every 10th frame')
+
+        # Hist of eye tracking quality
+        ax2.hist(pupil_count, bins=9, range=(0,9), density=True)
+        ax2.set_xlabel('num good eye points')
+        ax2.set_ylabel('fraction of frames')
+
+        # Trace of horizontal orientation
+        ax3.plot(np.rad2deg(theta)[0:-1:10])
+        ax3.set_title('theta')
+        ax3.set_ylabel('deg')
+        ax3.set_xlabel('every 10th frame')
+
+        # Trace of vertical orientation
+        ax4.plot(np.rad2deg(phi)[0:-1:10])
+        ax4.set_title('phi')
+        ax4.set_ylabel('deg')
+        ax4.set_xlabel('every 10th frame')
 
         # Ellipticity histogram
         fig_dwnsmpl = 100
 
         try:
             # Hist of ellipticity
-            plt.figure()
-            plt.hist(ellipticity, density=True)
-            plt.title('ellipticity; thresh='+str(self.cfg['eye_ellthresh']))
-            plt.ylabel('ellipticity')
-            plt.xlabel('fraction of frames')
-            pdf.savefig()
-            plt.close()
+            ax5.hist(ellipticity, density=True)
+            ax5.set_title('ellipticity; thresh='+str(self.cfg['eye_ellthresh']))
+            ax5.set_ylabel('ellipticity')
+            ax5.set_xlabel('fraction of frames')
             
             # Eye axes relative to center
             w = ellipse[:,7]
-            plt.figure()
             for i in range(0,len(usegood_ellipcalb)):
 
                 _show = usegood_ellipcalb[i::fig_dwnsmpl]
 
-                plt.plot((ellipse[_show,11] + [-5 * np.cos(w[_show]),       \
+                ax6.plot((ellipse[_show,11] + [-5 * np.cos(w[_show]),       \
                          5 * np.cos(w[_show])]),                            \
                          (ellipse[_show,12] + [-5*np.sin(w[_show]),         \
                          5*np.sin(w[_show])]))
 
-            plt.plot(cam_cent[0], cam_cent[1], 'r*')
-            plt.title('eye axes relative to center')
-            pdf.savefig()
-            plt.close()
+            ax6.plot(cam_cent[0], cam_cent[1], 'r*')
+            ax6.set_title('eye axes relative to center')
 
         except Exception as e:
             print('Figure error in plots of ellipticity and axes relative to center')
@@ -578,41 +463,36 @@ class Eyecam(fme.Camera):
                                                              yvals[calib_mask].T)
         
         except ValueError:
-            print('no good frames that meet criteria... check DLC tracking!')
+            print('No good frames that meet criteria... check DLC tracking!')
 
         # Save out camera center and scale as np array (but only if this is
         # a freely moving recording).
-        if 'fm' in self.recording_name or not self.cfg['strict_dir']:
             
-            calib_props_dict = {
-                'cam_cent_x':float(cam_cent[0]),
-                'cam_cent_y':float(cam_cent[1]),
-                'scale':float(scale),
-                'regression_r':float(r_value),
-                'regression_m':float(slope)
-            }
+        calib_props_dict = {
+            'cam_cent_x':float(cam_cent[0]),
+            'cam_cent_y':float(cam_cent[1]),
+            'scale':float(scale),
+            'regression_r':float(r_value),
+            'regression_m':float(slope)
+        }
 
-            _savename = '{}{}_fm_eyecameracalc_props.json'.format(self.recording_name,
+        _savename = '{}{}_fm_eyecameracalc_props.json'.format(self.recording_name,
                                                                   self.camname)
+        calib_props_dict_savepath = os.path.join(self.recording_path, _savename)
 
-            calib_props_dict_savepath = os.path.join(self.recording_path, _savename)
-
-            print('Saving calibration parameters to '+ calib_props_dict_savepath)
+        print('Saving calibration parameters to '+ calib_props_dict_savepath)
             
-            with open(calib_props_dict_savepath, 'w') as f:
-                json.dump(calib_props_dict, f)
+        with open(calib_props_dict_savepath, 'w') as f:
+            json.dump(calib_props_dict, f)
         
         # Figures of scale and center
         try:
-            plt.figure()
-            plt.plot(xvals[::fig_dwnsmpl],
+            ax7.plot(xvals[::fig_dwnsmpl],
                      yvals[::fig_dwnsmpl], '.', markersize=1)
-            plt.plot(np.linspace(0,50), np.linspace(0,50), 'r')
-            plt.title('scale={:.3} r={:.3} m={:.3}'.format(scale, r_value, slope))
-            plt.xlabel('pupil camera dist')
-            plt.ylabel('scale * ellipticity')
-            pdf.savefig()
-            plt.close()
+            ax7.plot(np.linspace(0,50), np.linspace(0,50), 'r')
+            ax7.set_title('scale={:.3} r={:.3} m={:.3}'.format(scale, r_value, slope))
+            ax7.set_xlabel('pupil camera dist')
+            ax7.set_ylabel('scale * ellipticity')
 
             # Calibration of camera center
             delta = (cam_cent - ellipse[:, 11:13].T)
@@ -620,22 +500,21 @@ class Eyecam(fme.Camera):
             _useec = usegood_eyecalib[::fig_dwnsmpl]
             _use3 = np.squeeze(usegood_ellipcalb)[::fig_dwnsmpl]
 
-            plt.figure()
-            plt.plot(np.linalg.norm(delta[:,_useec], 2, axis=0),                \
+            ax8.plot(np.linalg.norm(delta[:,_useec], 2, axis=0),                \
                     ((delta[0, _useec].T * np.cos(ellipse[_useec, 7]))          \
                     + (delta[1, _useec].T * np.sin(ellipse[_useec, 7])))        \
                     / np.linalg.norm(delta[:, _useec], 2, axis=0).T,            \
                     'y.', markersize=1)
 
-            plt.plot(np.linalg.norm(delta[:,_use3], 2, axis=0),                 \
+            ax8.plot(np.linalg.norm(delta[:,_use3], 2, axis=0),                 \
                     ((delta[0, _use3].T * np.cos(ellipse[_use3,7]))             \
                     + (delta[1, _use3].T * np.sin(ellipse[_use3, 7])))          \
                     / np.linalg.norm(delta[:, _use3], 2, axis=0).T,             \
                     'r.', markersize=1)
 
-            plt.title('camera center calibration')
-            plt.ylabel('abs([PC-EC]).[cosw;sinw]')
-            plt.xlabel('abs(PC-EC)')
+            ax8.set_title('camera center calibration')
+            ax8.set_ylabel('abs([PC-EC]).[cosw;sinw]')
+            ax8.set_xlabel('abs(PC-EC)')
 
             patch0 = mpatches.Patch(color='y', label='all pts')
             patch1 = mpatches.Patch(color='y', label='calibration pts')
