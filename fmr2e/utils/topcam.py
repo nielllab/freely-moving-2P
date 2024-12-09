@@ -121,10 +121,18 @@ class Topcam():
             'y': smooth_y,
             'head_yaw_deg': head_yaw_deg,
             'body_yaw_deg': body_yaw_deg,
-            'movement_yaw_deg': movement_yaw_deg
+            'movement_yaw_deg': movement_yaw_deg,
+            'x_displacement': x_disp,
+            'y_displacement': y_disp
         }
 
         return topcam_dict
+
+    def save_tracking(self, topcam_dict):
+
+        _savepath = os.path.join(self.recording_path, '{}_top_tracking.h5'.format(self.recording_name))
+        fmr2e.write_h5(_savepath, topcam_dict)
+
 
         # Plot traces of each labeled point and show frequency of good tracking
         # pt_names = list(self.xrpts['point_loc'].values)

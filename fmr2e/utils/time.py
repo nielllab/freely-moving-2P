@@ -163,3 +163,34 @@ def read_timestamp_file(timestamp_path, position_data_length=None,
     
     return camT
 
+
+
+def interpT(x, xT, toT):
+    """ Interpolate timestamps.
+    
+    Parameters
+    ----------
+    x : np.array
+        Array of values to interpolate.
+    xT : np.array
+        Array of datetime objects corresponding to x.
+    toT : np.array
+        Array of datetime objects to interpolate to.
+
+    Returns
+    -------
+    out : np.array
+        Array of interpolated values.
+
+    """
+
+    # Convert timestamps to float values.
+    if type(xT[0]) == datetime.datetime:
+        xT = time2float(xT)
+    if type(xT[0]) == datetime.datetime:
+        toT = time2float(toT)
+
+    out = interp1d(xT, x,
+                   bounds_error=False)(toT)
+    
+    return out

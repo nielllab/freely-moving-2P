@@ -489,6 +489,9 @@ class Eyecam():
 
         pdf.close()
 
+        for k,v in ellipse_dict.items():
+            ellipse_dict[k] = np.array(v)
+
         return ellipse_dict
     
     def save_tracking(self, ellipse_dict):
