@@ -310,7 +310,6 @@ def undistort_video(video_path, npz_path):
     dist = checker_in['dist']
     rvecs = checker_in['rvecs']
     tvecs = checker_in['tvecs']
-    
         
     cap = cv2.VideoCapture(video_path)
     real_fps = cap.get(cv2.CAP_PROP_FPS)

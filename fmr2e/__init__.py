@@ -3,7 +3,6 @@ from fmr2e.utils.helper import (
     apply_liklihood_thresh
 )
 
-
 from fmr2e.utils.paths import (
     choose_most_recent,
     up_dir,
@@ -18,7 +17,6 @@ from fmr2e.utils.time import (
     interp_timestamps,
     read_timestamp_file
 )
-
 
 from fmr2e.utils.cameras import (
     deinterlace,

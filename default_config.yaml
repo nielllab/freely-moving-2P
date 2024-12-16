@@ -1,0 +1,29 @@
+
+recording_path : ...
+
+# Indicate data types
+has_worldcam: false
+has_eyecam: false
+
+# General options
+likelihood_thresh: 0.99
+
+# Paths
+eye_DLC_project: ...
+top_DLC_project: ...
+worldcam_distortion_mtx_path: ...
+
+# Eyecam tracking
+ridge_cyclotorsion: false
+eye_ellipse_thresh: 0.85
+eye_fig_pts_dwnspl: 100
+eye_dist_thresh: 4.1
+eye_pxl2cm: 24
+eye_radius_thresh: 50
+eye_calibration_N: 8
+eye_trackable_N: 7
+
+# Topcam tracking
+arena_width_cm: 22.
+running_thresh: 2.
+forward_thresh: 40.

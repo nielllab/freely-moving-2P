@@ -23,7 +23,8 @@ class Topcam():
         elif cfg is not None:
             self.likelihood_thresh = cfg['likelihood_thresh']
             self.arena_width_cm = cfg['arena_width_cm']
-
+            self.running_thresh = cfg['running_thresh']
+            self.forward_thresh = cfg['forward_thresh']
 
     def find_files(self):
         

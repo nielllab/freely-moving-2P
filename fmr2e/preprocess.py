@@ -9,13 +9,21 @@ def preprocess(rec_path, cfg=None):
 
     if cfg is None:
         has_worldcam = False
-        eye_DLC_project = ...
-        top_DLC_project = ...
-        worldcam_distortion_mtx_path = ...
+        has_eyecam = False
+        eye_DLC_project = 'T:/dlc_projects/freely_moving_eyecams_01-dylan-2024-12-04/config.yaml'
+        top_DLC_project = 'T:/dlc_projects/freely_moving_topdown_tub_01-dylan-2024-12-04/config.yaml'
+        worldcam_distortion_mtx_path = 'T:/camera_calibration/worldcam_01_calibration_mtx.npz'
+    elif cfg is not None:
+        has_worldcam = cfg['has_worldcam']
+        has_eyecam = cfg['has_eyecam']
+        eye_DLC_project = cfg['eye_DLC_project']
+        top_DLC_project = cfg['top_DLC_project']
+        worldcam_distortion_mtx_path = cfg['worldcam_distortion_mtx_path']
 
     # Deinterlace eyecam
-    raw_eyevid_path = fmr2e.find('{}*eye.avi'.format(rec_name), rec_path, MR=True)
-    eye_deinter_vid = fmr2e.deinterlace(raw_eyevid_path)
+    if has_eyecam:
+        raw_eyevid_path = fmr2e.find('{}*eye.avi'.format(rec_name), rec_path, MR=True)
+        eye_deinter_vid = fmr2e.deinterlace(raw_eyevid_path)
 
     # Deinterlace worldcam
     if has_worldcam:
@@ -24,22 +32,24 @@ def preprocess(rec_path, cfg=None):
         _ = fmr2e.undistort_video(world_deinter_vid, worldcam_distortion_mtx_path)
 
     # Run deeplabcut for eyecam
-    fmr2e.run_pose_estimation(eye_deinter_vid, eye_DLC_project)
+    if has_eyecam:
+        fmr2e.run_pose_estimation(eye_deinter_vid, eye_DLC_project)
 
     # Run deeplabcut for topdown camera
     raw_topvid_path = fmr2e.find('{}*top.avi'.format(rec_name), rec_path, MR=True)
     fmr2e.run_pose_estimation(raw_topvid_path, top_DLC_project)
 
     # Track pupil position from the eye camera
-    reye_cam = fmr2e.Eyecam(rec_path, rec_name)
-    reye_cam.find_files()
-    eye_xyl, ellipse_dict = reye_cam.track_pupil()
+    if has_eyecam:
+        reye_cam = fmr2e.Eyecam(rec_path, rec_name)
+        reye_cam.find_files()
+        eye_xyl, ellipse_dict = reye_cam.track_pupil()
 
-    # Load eye video as array
-    eyevid_arr = fmr2e.pack_video_frames(reye_cam.eye_avi)
-    
-    # Save eye cam tracking and video as .h5 file
-    reye_cam.save_tracking(ellipse_dict, eye_xyl, eyevid_arr)
+        # Load eye video as array
+        eyevid_arr = fmr2e.pack_video_frames(reye_cam.eye_avi)
+        
+        # Save eye cam tracking and video as .h5 file
+        reye_cam.save_tracking(ellipse_dict, eye_xyl, eyevid_arr)
 
     # Track mouse position from top-down camera
     top_cam = fmr2e.Topcam(rec_path, rec_name)
