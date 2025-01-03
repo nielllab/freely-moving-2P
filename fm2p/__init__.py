@@ -56,3 +56,7 @@ from fm2p.utils.twop import (
 )
 
 from fm2p.reorg import reorg
+
+from fm2p.utils.cmap import make_parula
+
+from fm2p.utils.walls import calc_rays
