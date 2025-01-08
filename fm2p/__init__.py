@@ -60,3 +60,18 @@ from fm2p.reorg import reorg
 from fm2p.utils.cmap import make_parula
 
 from fm2p.utils.walls import calc_rays
+
+from fm2p.utils.ebc import (
+    calculate_egocentric_rate_map,
+    calc_EBC,
+    calc_show_rate_maps,
+    plot_single_polar_ratemap,
+    plot_allocentric_spikes,
+    plot_egocentic_wall_positions
+)
+
+from fm2p.utils.behavior import (
+    plot_yaw_distribution,
+    plot_speed_distribution,
+    plot_movement_yaw_distribution
+)

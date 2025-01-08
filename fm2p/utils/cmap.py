@@ -1,3 +1,7 @@
+
+
+import numpy as np
+import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
 def make_parula():
@@ -264,3 +268,22 @@ def make_parula():
     parula_map = LinearSegmentedColormap.from_list('parula', parula)
 
     return parula_map
+
+
+def make_rainbow_legend():
+
+    cmap = plt.cm.hsv(np.linspace(0,1,360))
+
+    fig, ax = plt.subplots(1,1, figsize=(3,3), dpi=300)
+    angles = np.arange(360)
+    radius = 0.25
+    for a in angles:
+        x_points = radius * np.cos(np.deg2rad(a))
+        y_points = radius * np.sin(np.deg2rad(a))
+        ax.plot(x_points, y_points, marker='o', linestyle='-', markersize=12,
+                color = cmap[a])
+    ax.axis('equal')
+    ax.invert_yaxis()
+    ax.axis('off')
+
+    return fig

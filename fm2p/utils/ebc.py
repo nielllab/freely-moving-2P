@@ -176,3 +176,90 @@ def calc_show_rate_maps(rate_map, sps, topdlc, body_tracking_results):
         axs[cellind].axis('off')
 
     fig.tight_layout()
+
+    return fig
+
+
+def plot_single_polar_ratemap(rate_map):
+
+    parula_map = fm2p.make_parula()
+
+    distance_bins = np.linspace(0,17,8)
+    angle_bins = np.deg2rad(np.arange(-180,184,8))
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    rate_mesh_X, rate_mesh_Y = np.meshgrid(angle_bins+(np.pi/2), distance_bins) # +(np.pi/2)
+    plt.pcolormesh(rate_mesh_X, rate_mesh_Y, rate_map, edgecolors='face', cmap=parula_map)
+    plt.yticks([])
+    plt.xticks([])
+    plt.colorbar(label='sp/s')
+
+
+def plot_allocentric_spikes(fig, ax, body_tracking_results, sps, cellind, pxls2cm=None, spikethresh=20):
+
+    if pxls2cm is None:
+        pxls2cm = 86.33960307728161
+
+    cmap = plt.cm.hsv(np.linspace(0,1,360))
+
+    if (fig is None) and (ax is None):
+        fig, ax = plt.subplots(1,1, dpi=300)
+
+    ax.axis('equal')
+    ax.plot(body_tracking_results['x'] / pxls2cm, body_tracking_results['y'] / pxls2cm, color='k')
+    for i in range(len(body_tracking_results['head_yaw_deg'])):
+        if (~np.isnan(body_tracking_results['head_yaw_deg'][i])) and (sps[cellind,i]>spikethresh):
+            ax.plot(body_tracking_results['x'][i] / pxls2cm, body_tracking_results['y'][i] / pxls2cm,
+                'o', ms=3, color=cmap[int(body_tracking_results['head_yaw_deg'][i])])
+    ax.invert_yaxis()
+    ax.set_xlabel('x (cm)')
+    ax.set_ylabel('y (cm)')
+    ax.set_title('>{} sp/s'.format(spikethresh))
+
+    return fig
+
+
+def plot_egocentic_wall_positions(fig, ax, topdlc, body_tracking_results, sps, cellind, spikethresh=20, pxls2cm=None):
+
+    if pxls2cm is None:
+        pxls2cm = 86.33960307728161
+
+    x1 = np.nanmedian(topdlc['tl_corner_x']) / pxls2cm
+    x2 = np.nanmedian(topdlc['tr_corner_x']) / pxls2cm
+    y1 = np.nanmedian(topdlc['tl_corner_y']) / pxls2cm
+    y2 = np.nanmedian(topdlc['br_corner_y']) / pxls2cm
+
+    wall_list = [
+        fm2p.Wall(x1,y1,x2,y1),
+        fm2p.Wall(x1,y1,x1,y2),
+        fm2p.Wall(x2,y1,x2,y2),
+        fm2p.Wall(x1,y2,x2,y2)
+    ]
+
+    raydists_above_sps_thresh = []
+
+    for i in range(len(body_tracking_results['head_yaw_deg'])):
+        if (~np.isnan(body_tracking_results['head_yaw_deg'][i])) and (sps[cellind,i]>spikethresh):
+            valerr_count = 0
+            try:
+                ray_distances = fm2p.closest_wall_per_ray(
+                    body_tracking_results['x'][i] / pxls2cm,
+                    body_tracking_results['y'][i] / pxls2cm,
+                    np.deg2rad(body_tracking_results['head_yaw_deg'][i]),
+                    wall_list,
+                    ego_rays_deg=1
+                )
+                raydists_above_sps_thresh.append(ray_distances)
+            except ValueError as e:
+                valerr_count += 1
+
+    fig, ax = plt.subplots(1,1, subplot_kw=dict(projection='polar'), dpi=300)
+    for rd in raydists_above_sps_thresh:
+        ax.plot(np.deg2rad(np.arange(0,360))+(np.pi/2), rd, color='k', alpha=0.2)
+    ax.set_yticks([])
+    ax.set_xticks([])
+    fig.tight_layout()
+
+    return fig
+
+
