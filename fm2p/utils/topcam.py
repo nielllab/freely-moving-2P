@@ -282,7 +282,7 @@ class Topcam():
 
         save_dict = {**xyl_dict, **topcam_dict, **vid_dict}
 
-        if (arena_coords is not None)
+        if (arena_coords is not None):
             save_dict['arena_coords'] = arena_coords
         if (pillar_coords is not None):
             save_dict['pillar_coords'] = pillar_coords
