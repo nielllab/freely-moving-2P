@@ -57,11 +57,6 @@ class Topcam():
         likelihood_thresh = self.cfg['likelihood_thresh']
         arena_width_cm = self.cfg['arena_width_cm']
 
-
-        # Get timestamps
-        # topT = self.xrpts.timestamps.copy()
-        # topT = fm2p.read_timestamp_file(self.topT_csv)
-
         # Read DLC data and filter by likelihood
         xyl, _ = fm2p.open_dlc_h5(self.top_dlc_h5)
         x_vals, y_vals, likelihood = fm2p.split_xyl(xyl)
@@ -75,7 +70,6 @@ class Topcam():
         right = 'arena_TR_x' # top right X
         
         dist_pxls = np.nanmedian(x_vals[right]) - np.nanmedian(x_vals[left])
-        
         pxls2cm = dist_pxls / arena_width_cm
 
         # Topdown speed using neck point
@@ -93,20 +87,6 @@ class Topcam():
         head_yaw = np.arctan2((lear_y - rear_y), (lear_x - rear_x)) + np.deg2rad(90)
         head_yaw_deg = np.rad2deg(head_yaw % (2*np.pi))
 
-        # # Body angle from neck and back points
-        # neck_x = np.mean([fm2p.nanmedfilt(lear_x, 7)[0].squeeze(), fm2p.nanmedfilt(rear_x, 7)[0].squeeze()])
-        # neck_y = np.mean([fm2p.nanmedfilt(lear_y, 7)[0].squeeze(), fm2p.nanmedfilt(rear_y, 7)[0].squeeze()])
-        # back_x = fm2p.nanmedfilt(x_vals['base_tail_x'], 7)[0].squeeze()
-        # back_y = fm2p.nanmedfilt(y_vals['base_tail_y'], 7)[0].squeeze()
-        
-        # body_yaw = np.arctan2((neck_y - back_y), (neck_x - back_x))
-        # body_yaw_deg = np.rad2deg(body_yaw % (2*np.pi))
-
-        # body_head_diff = head_yaw - body_yaw
-
-        # body_head_diff[body_head_diff<-np.deg2rad(120)] = np.nan
-        # body_head_diff[body_head_diff>np.deg2rad(120)] = np.nan
-
         # Angle of body movement ("movement yaw")
         x_disp = np.diff((smooth_x*60) / pxls2cm)
         y_disp = np.diff((smooth_y*60) / pxls2cm)
@@ -114,34 +94,13 @@ class Topcam():
         movement_yaw = np.arctan2(y_disp, x_disp)
         movement_yaw_deg = np.rad2deg(movement_yaw % (2*np.pi))
 
-        # Definitions of state
-        # movement_minus_body = movement_yaw - body_yaw[:-1]
-
-        # running = (top_speed>self.running_thresh)
-        # forward = (np.abs(movement_minus_body) < np.deg2rad(self.forward_thresh))
-        # backward = (np.abs(movement_minus_body + np.deg2rad(180) % (2*np.pi)) < np.deg2rad(self.forward_thresh))
-        
-        # forward_run = running * forward
-        # backward_run = running * backward
-        # fine_motion = running * ~forward * ~backward
-        # stationary = ~running
-
         topcam_dict = {
             'speed': top_speed,
             'head_yaw': head_yaw,
-            # 'body_yaw': body_yaw,
-            # 'body_head_diff': body_head_diff,
             'movement_yaw': movement_yaw,
-            # 'movement_minus_body': movement_minus_body,
-            # 'forward_run': forward_run,
-            # 'backward_run': backward_run,
-            # 'fine_motion': fine_motion,
-            # 'stationary': stationary,
-            # 'topT': topT,
             'x': smooth_x,
             'y': smooth_y,
             'head_yaw_deg': head_yaw_deg,
-            # 'body_yaw_deg': body_yaw_deg,
             'movement_yaw_deg': movement_yaw_deg,
             'x_displacement': x_disp,
             'y_displacement': y_disp
@@ -169,13 +128,10 @@ class Topcam():
         pillarX = [topP[0], bottomP[0], leftP[0], rightP[0]]
         pillarY = [topP[1], bottomP[1], leftP[1], rightP[1]]
 
-        print(pillarX, pillarY)
-
         pillar_dict = fm2p.Eyecam.fit_ellipse(_, x=pillarX, y=pillarY)
-
-        pillar_centroid = (pillar_dict['Y0'], pillar_dict['X0'])
+        pillar_centroid = [pillar_dict['Y0'], pillar_dict['X0']]
         pillar_axes = (pillar_dict['long_axis'], pillar_dict['short_axis'])
-        pillar_rotation = pillar_dict['phi']
+        # pillar_rotation = pillar_dict['phi']
         pillar_radius = np.mean(pillar_axes)
 
         tlA = (np.nanmedian(x_vals['arena_TL_x']), np.nanmedian(y_vals['arena_TL_y']))
@@ -184,13 +140,15 @@ class Topcam():
         blA = (np.nanmedian(x_vals['arena_BL_x']), np.nanmedian(y_vals['arena_BL_y']))
 
         # Arena coordinates
-        arena_coords = (tlA, trA, brA, blA)
+        arena_coords = [tlA, trA, brA, blA]
+        arena_coords = [list(x) for x in arena_coords]
 
         # Pillar coordinates
-        pillar_coords = (topP, bottomP, leftP, rightP)
+        pillar_coords = [topP, bottomP, leftP, rightP]
+        pillar_coords = [list(x) for x in pillar_coords]
 
         # Pillar circle parameters
-        pillar_fit = (pillar_centroid, pillar_radius)
+        pillar_fit = [pillar_centroid, pillar_radius]
 
         return arena_coords, pillar_coords, pillar_fit
     

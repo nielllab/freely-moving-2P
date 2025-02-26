@@ -115,13 +115,13 @@ def preprocess(cfg_path=None, spath=None):
                 filter=False
             )
 
-            # print('  -> Running pose estimation for topdown camera video.')
+            print('  -> Running pose estimation for topdown camera video.')
 
-            # fm2p.run_pose_estimation(
-            #     topdown_video,
-            #     project_cfg=cfg['top_DLC_project'],
-            #     filter=False
-            # )
+            fm2p.run_pose_estimation(
+                topdown_video,
+                project_cfg=cfg['top_DLC_project'],
+                filter=False
+            )
 
         # Find dlc files
         eyecam_pts_path = fm2p.find('*_eyecam_deinterDLC_resnet50_*freely_moving_eyecams*.h5', rpath, MR=True)
@@ -130,12 +130,12 @@ def preprocess(cfg_path=None, spath=None):
         print('  -> Reading fluorescence data.')
 
         # Read suite2p data
-        F = np.load(F_path)
-        Fneu = np.load(Fneu_path)
-        spks = np.load(suite2p_spikes)
+        F = np.load(F_path, allow_pickle=True)
+        Fneu = np.load(Fneu_path, allow_pickle=True)
+        spks = np.load(suite2p_spikes, allow_pickle=True)
         # stat = np.load(suite2p_stat_path, allow_pickle=True)
         # ops =  np.load(suite2p_ops_path, allow_pickle=True)
-        iscell = np.load(iscell_path)
+        iscell = np.load(iscell_path, allow_pickle=True)
 
         # Create recording name
         # 250218_DMM_DMM038_rec_01_eyecam.avi
@@ -172,10 +172,15 @@ def preprocess(cfg_path=None, spath=None):
         print('  -> Running spike inference.')
 
         # Load processed two photon data from suite2p
-        twop = fm2p.TwoP
-        twop.add_files(F, Fneu, spks, iscell)
-        twop_dict = twop.calc_dFF(neu_correction=0.7)
-        twop_preproc_path = twop.save_fluor(twop_dict)
+        twop_recording = fm2p.TwoP(rpath, full_rname, cfg=cfg)
+        twop_recording.add_data(
+            F=F,
+            Fneu=Fneu,
+            spikes=spks,
+            iscell=iscell
+        )
+        twop_dict = twop_recording.calc_dFF(neu_correction=0.7)
+        twop_preproc_path = twop_recording.save_fluor(twop_dict)
 
         print('  ->Aligning eye camera data streams to 2P and behavior data using TTL voltage.')
 
@@ -183,15 +188,18 @@ def preprocess(cfg_path=None, spath=None):
             eye_dlc_h5=eyecam_pts_path,
             eye_TS_csv=eyecam_video_timestamps,
             eye_TTLV_csv=eyecam_TTL_voltage,
-            eye_TTLTS_csv=eyecam_TTL_timestamps,
+            eye_TTLTS_csv=eyecam_TTL_timestamps
         )
+
+        print(eyeStart, eyeEnd)
+        print(np.float64(eyeStart), np.float64(eyeEnd))
 
         # If a real config path was given, write some new data into the dictionary and then overwrite it
         if cfg_path is not None:
 
             temp_dict = {}
 
-            temp_dict['rpath'] = os.path.join()
+            temp_dict['rpath'] = rpath
             temp_dict['top_preproc_path'] = top_preproc_path
             temp_dict['twop_preproc_path'] = twop_preproc_path
             temp_dict['eye_preproc_path'] = eye_preproc_path
@@ -203,8 +211,8 @@ def preprocess(cfg_path=None, spath=None):
             temp_dict['eyecam_deinter_video'] = eyecam_deinter_video
             temp_dict['eyecam_pts_path'] = eyecam_pts_path
             temp_dict['topdown_pts_path'] = topdown_pts_path
-            temp_dict['eyeT_startInd'] = eyeStart
-            temp_dict['eyeT_endInd'] = eyeEnd
+            temp_dict['eyeT_startInd'] = np.float64(eyeStart)
+            temp_dict['eyeT_endInd'] = np.float64(eyeEnd)
             temp_dict['F_path'] = F_path
             temp_dict['Fneu_path'] = Fneu_path
             temp_dict['suite2p_spikes'] = suite2p_spikes

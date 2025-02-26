@@ -7,6 +7,7 @@ DMM, 2024
 
 
 import os
+import yaml
 import json
 import numpy as np
 import pandas as pd
@@ -20,33 +21,22 @@ import fm2p
 
 class TwoP():
 
-    def __init__(self, recording_path, recording_name, cfg=None, props=None, rnum=np.nan):
+    def __init__(self, recording_path, recording_name, cfg=None):
         
         self.recording_path = recording_path
         self.recording_name = recording_name
 
         if cfg is None:
-            self.twop_dt = 1./7.5
+            internals_config_path = os.path.join(fm2p.up_dir(__file__, 1), 'internals.yaml')
+            with open(internals_config_path, 'r') as infile:
+                cfg = yaml.load(infile, Loader=yaml.FullLoader)
+        elif type(cfg)==str:
+            with open(cfg, 'r') as infile:
+                cfg = yaml.load(infile, Loader=yaml.FullLoader)
 
-        if (props is not None) and (~np.isnan(rnum)):
-            with open(props, 'r') as f:
-                session_props = json.load(f)
-            self.rstr = 'R{:02}'.format(rnum)
-            rdir = session_props[self.rstr]['rec_dir']
+        self.cfg = cfg
 
-            self.suite2p_path = os.path.join(rdir, session_props[self.rstr]['suite2p'])
-
-            self.suite2p_outputs = np.load(self.suite2p_path)
-            self.F = self.suite2p_outputs['F']
-            self.Fneu = self.suite2p_outputs['Fneu']
-            iscell = self.suite2p_outputs['iscell']
-            self.s2p_spks = self.suite2p_outputs['spks']
-
-            usecells = iscell[:,0]==1
-
-            self.F[usecells, :]
-            self.Fneu[usecells, :]
-            self.s2p_spks[usecells, :]
+        self.dt = 1. / cfg['twop_rate']
 
     def find_files(self):
 
@@ -61,13 +51,15 @@ class TwoP():
         self.Fneu = self.Fneu[usecells, :]
         self.s2p_spks = spks[usecells, :]
 
-    def add_files(self, F, Fneu, spikes, iscell):
+
+    def add_data(self, F, Fneu, spikes, iscell):
 
         usecells = iscell[:,0]==1
 
         self.F = F[usecells, :]
         self.Fneu = Fneu[usecells, :]
         self.s2p_spks = spikes[usecells, :]
+
 
     def calc_dFF(self, neu_correction=0.7):
 

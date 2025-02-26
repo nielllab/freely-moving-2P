@@ -319,7 +319,7 @@ def interpT(x, xT, toT):
 
 def find_closest_timestamp(arr, t):
 
-    ind = np.argmin(np.abs(arr - t))
+    ind = np.nanargmin(np.abs(arr - t))
     approx_t = arr[ind]
 
     return ind, approx_t
