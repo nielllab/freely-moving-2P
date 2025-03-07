@@ -10,9 +10,6 @@ import os
 import argparse
 import numpy as np
 import yaml
-import PySimpleGUI as sg
-
-sg.theme('Default1')
 
 import fm2p
 
@@ -39,10 +36,9 @@ def preprocess(cfg_path=None, spath=None):
         cfg['spath'] = spath
     elif (cfg_path is None) and (spath is None):
         print('Choose config yaml file.')
-        cfg_path = sg.popup_get_file(
-            'Choose config yaml file.', 'Choose config yaml file.',
-            initial_folder='K:/', no_window=True, keep_on_top=True,
-            file_types=(('YAML', '*.yaml'),('YML', '*.yml'),)
+        cfg_path = fm2p.select_file(
+            title='Choose config yaml file.',
+            filetypes=[('YAML', '*.yaml'),('YML', '*.yml'),]
         )
         with open(cfg_path, 'r') as infile:
             cfg = yaml.load(infile, Loader=yaml.FullLoader)

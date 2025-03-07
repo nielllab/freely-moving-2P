@@ -90,3 +90,9 @@ from fm2p.utils.alignment import (
 from fm2p.utils.polygon_translation import user_polygon_translation
 
 from fm2p.utils.correlation import nanxcorr
+
+from fm2p.utils.gui_funcs import (
+    select_file,
+    select_directory,
+    get_string_input
+)
