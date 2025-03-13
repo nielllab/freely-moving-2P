@@ -115,70 +115,42 @@ class Topcam():
         return xyl, topcam_dict
     
 
-    def track_arena(self, vidpath_for_annotation=None):
+    def track_arena(self):
 
-        likelihood_thresh = self.cfg['likelihood_thresh']
+        frame = fm2p.load_video_frame(self.top_avi, fr=np.nan, ds=1.)
 
-        xyl, _ = fm2p.open_dlc_h5(self.top_dlc_h5)
-        x_vals, y_vals, likelihood = fm2p.split_xyl(xyl)
+        print('Place points around the perimeter of the pillar (align to the top of the pillar, even if that is different from the base).')
 
-        x_vals = fm2p.apply_liklihood_thresh(x_vals, likelihood, threshold=likelihood_thresh)
-        y_vals = fm2p.apply_liklihood_thresh(y_vals, likelihood, threshold=likelihood_thresh)
+        user_pillar_x, user_pillar_y = fm2p.place_points_on_image(frame, num_pts=8)
 
-        # assume single continuous pillar position over entire recording
-        topP = (np.nanmedian(x_vals['pillar_T_x']), np.nanmedian(y_vals['pillar_T_y']))
-        bottomP = (np.nanmedian(x_vals['pillar_B_x']), np.nanmedian(y_vals['pillar_B_y']))
-        leftP = (np.nanmedian(x_vals['pillar_L_x']), np.nanmedian(y_vals['pillar_L_y']))
-        rightP = (np.nanmedian(x_vals['pillar_R_x']), np.nanmedian(y_vals['pillar_R_y']))
+        # Convert from two lists of points to a single list of (x,y) pairs.
+        user_pts = []
+        for i in range(len(user_pillar_x)):
+            user_pts.append((user_pillar_x[i], user_pillar_y[i]))
 
-        if vidpath_for_annotation is not None:
+        print('Drag the polygon to a better position over the pillar. Close the figure when done.')
 
-            print('Preparing for annotation of pillar position.')
+        shifted_user_pts = fm2p.user_polygon_translation(pts=user_pts, image=frame)
 
-            print('Initial pillar coords (T,B,L,R): \n{}\n{}\n{}\n{}\n'.format(
-                topP,bottomP,leftP,rightP))
+        # Convert from single list of (x,y) pairs to two lists of points.
+        pillar_x = []
+        pillar_y = []
+        for i in range(len(shifted_user_pts)):
+            pillar_x.append(shifted_user_pts[i][0])
+            pillar_y.append(shifted_user_pts[i][1])
 
-            print('Reading in topdown video.')
-            topdown_video = fm2p.pack_video_frames(vidpath_for_annotation, dwnsmpl=0.5)
-
-            nF = np.size(topdown_video, 0)
-            nF = int(nF/2)
-            topdown_stillframe = topdown_video[nF,:,:].copy()
-
-            # Clear the full video from memory
-            del topdown_video
-            gc.collect()
-
-            print('Drag the polygon to a better position over the pillar. Close the figure when done.')
-            topP = (topP[0]/2, topP[1]/2)
-            rightP = (rightP[0]/2, rightP[1]/2)
-            bottomP = (bottomP[0]/2, bottomP[1]/2)
-            leftP = (leftP[0]/2, leftP[1]/2)
-
-            [topP, rightP, bottomP, leftP] = fm2p.user_polygon_translation(
-                pts=[topP, rightP, bottomP, leftP],
-                image=topdown_stillframe)
-
-            topP = (topP[0]*2, topP[1]*2)
-            rightP = (rightP[0]*2, rightP[1]*2)
-            bottomP = (bottomP[0]*2, bottomP[1]*2)
-            leftP = (leftP[0]*2, leftP[1]*2)
-
-            print('Final pillar coords (T,B,L,R): \n{}\n{}\n{}\n{}\n'.format(
-                topP,bottomP,leftP,rightP))
-
-        pillarX = [topP[0], bottomP[0], leftP[0], rightP[0]]
-        pillarY = [topP[1], bottomP[1], leftP[1], rightP[1]]
-
-        pillar_dict = fm2p.Eyecam.fit_ellipse(_, x=pillarX, y=pillarY)
+        pillar_dict = fm2p.Eyecam.fit_ellipse(_, x=pillar_x, y=pillar_y)
         pillar_centroid = [pillar_dict['Y0'], pillar_dict['X0']]
         pillar_axes = (pillar_dict['long_axis'], pillar_dict['short_axis'])
         pillar_radius = np.mean(pillar_axes)
 
-        tlA = (np.nanmedian(x_vals['arena_TL_x']), np.nanmedian(y_vals['arena_TL_y']))
-        trA = (np.nanmedian(x_vals['arena_TR_x']), np.nanmedian(y_vals['arena_TR_y']))
-        brA = (np.nanmedian(x_vals['arena_BR_x']), np.nanmedian(y_vals['arena_BR_y']))
-        blA = (np.nanmedian(x_vals['arena_BL_x']), np.nanmedian(y_vals['arena_BL_y']))
+        xyl, _ = fm2p.open_dlc_h5(self.top_dlc_h5)
+        x_vals, y_vals, likelihood = fm2p.split_xyl(xyl)
+
+        tlA = (np.nanmedian(x_vals['tl_x']), np.nanmedian(y_vals['tl_x']))
+        trA = (np.nanmedian(x_vals['tr_x']), np.nanmedian(y_vals['tr_x']))
+        brA = (np.nanmedian(x_vals['br_x']), np.nanmedian(y_vals['br_x']))
+        blA = (np.nanmedian(x_vals['bl_x']), np.nanmedian(y_vals['bl_x']))
 
         arena_dict = {
             'arenaTL': {
@@ -197,22 +169,8 @@ class Topcam():
                 'x': blA[0],
                 'y': blA[1]
             },
-            'pillarT': {
-                'x': topP[0],
-                'y': topP[1]
-            },
-            'pillarB': {
-                'x': bottomP[0],
-                'y': bottomP[1]
-            },
-            'pillarL': {
-                'x': leftP[0],
-                'y': leftP[1]
-            },
-            'pillarR': {
-                'x': rightP[0],
-                'y': rightP[1]
-            },
+            'pillar_x': pillar_x,
+            'pillar_y': pillar_y,
             'pillar_radius': pillar_radius,
             'pillar_centroid': {
                 'x': pillar_centroid[0],

@@ -1,3 +1,5 @@
+
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
@@ -7,7 +9,7 @@ class DraggablePolygon:
     def __init__(self, pts, image=None):
         self.press = None
 
-        fig = plt.figure()
+        fig = plt.figure(figsize=(9,8))
         ax = fig.add_subplot(111)
         if image is not None:
             ax.imshow(image, alpha=0.5, cmap='gray')
@@ -77,6 +79,48 @@ def user_polygon_translation(pts, image=None):
     plt.show()
 
     return dp.geometry
+
+
+def place_points_on_image(image, num_pts=8):
+    # Displays an image and allows the user to click to place points.
+    # After points are placed, returns the x and y coordinates of those points.
+    
+    fig, ax = plt.subplots(figsize=(9,8))
+    ax.imshow(image, cmap='gray')
+    
+    x_positions = []
+    y_positions = []
+    
+    # Callback function to capture mouse click positions
+    def on_click(event):
+        if len(x_positions) < num_pts:
+
+            print('Placing point {}/{}.'.format(len(x_positions)+1, num_pts))
+
+            # Get the x and y coordinates of the click
+            x, y = event.xdata, event.ydata
+            
+            if x is not None and y is not None:
+                # Store the coordinates
+                x_positions.append(x)
+                y_positions.append(y)
+                
+                # Add a red point at the clicked location
+                ax.plot(x, y, '.', color='tab:red')
+                plt.draw()
+
+            # If all points have been clicked, close the figure
+            if len(x_positions) == num_pts:
+                plt.close(fig)
+
+    # Connect the callback to the figure
+    cid = fig.canvas.mpl_connect('button_press_event', on_click)
+
+    # Show the plot and wait for the user to click all points
+    plt.show()
+
+    # Return the x and y positions as numpy arrays
+    return np.array(x_positions), np.array(y_positions)
 
 
 if __name__ == '__main__':

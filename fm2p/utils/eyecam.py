@@ -579,7 +579,7 @@ class Eyecam():
         eyeT = eyeT.copy() - eyeT[0]
 
         # Load video and crop in time around TTL start/end
-        eyevid = fm2p.pack_video_frames(vidpath, dwnsmpl=1.)[startInd:endInd,:,:]
+        eyevid = fm2p.pack_video_frames(vidpath, ds=1.)[startInd:endInd,:,:]
 
         # Set up range of degrees in radians
         rad_range = np.deg2rad(np.arange(360))

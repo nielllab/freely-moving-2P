@@ -5,7 +5,7 @@ File read/write utilities.
 DMM, 2024
 """
 
-
+import yaml
 import h5py
 import datetime
 import numpy as np
@@ -149,3 +149,14 @@ def read_h5(filename, ASLIST=False):
                 outl[int(key)] = item
             out = outl
         return out
+    
+
+def read_yaml(path):
+    with open(path, 'r') as infile:
+        contents = yaml.load(infile, Loader=yaml.FullLoader)
+    return contents
+
+
+def write_yaml(path, contents):
+    with open(path, 'w') as outfile:
+        yaml.dump(contents, outfile, default_flow_style=False)

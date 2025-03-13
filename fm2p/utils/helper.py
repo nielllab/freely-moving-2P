@@ -44,3 +44,30 @@ def apply_liklihood_thresh(x, l, threshold=0.99):
     x_vals = x_vals2.copy()
 
     return x_vals
+
+
+
+def str_to_bool(value):
+    """ Parse strings to read argparse flag entries in as bool.
+    
+    Parameters
+    ----------
+    value : str
+        Input value.
+
+    Returns
+    -------
+    bool
+        Input value as a boolean.
+    """
+
+    if isinstance(value, bool):
+        return value
+    
+    if value.lower() in {'False', 'false', 'f', '0', 'no', 'n'}:
+        return False
+    
+    elif value.lower() in {'True', 'true', 't', '1', 'yes', 'y'}:
+        return True
+    
+    raise ValueError(f'{value} is not a valid boolean value')

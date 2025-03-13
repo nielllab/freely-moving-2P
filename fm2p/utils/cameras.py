@@ -174,7 +174,7 @@ def run_pose_estimation(video, project_cfg, filter=False):
         deeplabcut.filterpredictions(project_cfg, video)
 
 
-def pack_video_frames(video_path, dwnsmpl=1.):
+def pack_video_frames(video_path, ds=1.):
     """ Read in video and pack the frames into a numpy array.
 
     Parameters
@@ -182,7 +182,7 @@ def pack_video_frames(video_path, dwnsmpl=1.):
     video_path : str
         File path to the video, which should be an .avi. This may work
         with other file types, but is untested.
-    dwnsmpl : float
+    ds : float
         Value by which to downsample the image, e.g., 0.5 scales the
         image to half of its origional x/y resolution). This does not
         downsample in the time dimension.
@@ -201,8 +201,8 @@ def pack_video_frames(video_path, dwnsmpl=1.):
     # empty array that is the target shape
     # should be number of frames x downsampled height x downsampled width
     all_frames = np.empty([int(vidread.get(cv2.CAP_PROP_FRAME_COUNT)),
-                        int(vidread.get(cv2.CAP_PROP_FRAME_HEIGHT)*dwnsmpl),
-                        int(vidread.get(cv2.CAP_PROP_FRAME_WIDTH)*dwnsmpl)], dtype=np.uint8)
+                        int(vidread.get(cv2.CAP_PROP_FRAME_HEIGHT)*ds),
+                        int(vidread.get(cv2.CAP_PROP_FRAME_WIDTH)*ds)], dtype=np.uint8)
     
     # iterate through each frame
     for frame_num in tqdm(range(0,int(vidread.get(cv2.CAP_PROP_FRAME_COUNT)))):
@@ -217,13 +217,51 @@ def pack_video_frames(video_path, dwnsmpl=1.):
         
         # downsample the frame by an amount specified in the config file
         sframe = cv2.resize(frame, (0,0),
-                            fx=dwnsmpl, fy=dwnsmpl,
+                            fx=ds, fy=ds,
                             interpolation=cv2.INTER_NEAREST)
         
         # add the downsampled frame to all_frames as int8
         all_frames[frame_num,:,:] = sframe.astype(np.int8)
     
     return all_frames
+
+def load_video_frame(video_path, fr, ds=1.):
+    # give value for viedo frame to read in. if flag gets np.nan, the middle frame will be chosen
+
+    vidread = cv2.VideoCapture(video_path)
+
+    nF = int(vidread.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if np.isnan(fr):
+        # fr = np.random.randint(0, nF)
+        fr = int(nF/2)
+
+    print('Reading frame {} from {}'.format(fr, os.path.split(video_path)[1]))
+
+    frame_out = np.empty(
+        [int(vidread.get(cv2.CAP_PROP_FRAME_HEIGHT)*ds), int(vidread.get(cv2.CAP_PROP_FRAME_WIDTH)*ds)],
+        dtype=np.uint8)
+    
+    vidread.set(cv2.CAP_PROP_POS_FRAMES, fr)
+
+    ret, frame = vidread.read()
+
+    if not ret:
+        return
+
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    sframe = cv2.resize(
+        frame,
+        (0,0),
+        fx=ds, fy=ds,
+        interpolation=cv2.INTER_NEAREST
+    )
+
+    frame_out[:,:] = sframe.astype(np.int8)
+
+    return frame_out
+
 
 
 def compute_camera_distortion(video_path, savepath, boardw=9, boardh=6):

@@ -31,20 +31,19 @@ def preprocess(cfg_path=None, spath=None):
     # If no config path, use defaults but ignore the spath from default
     if (cfg_path is None) and (spath is not None):
         internals_config_path = os.path.join(fm2p.up_dir(__file__, 1), 'utils/internals.yaml')
-        with open(internals_config_path, 'r') as infile:
-            cfg = yaml.load(infile, Loader=yaml.FullLoader)
+        cfg = fm2p.read_yaml(internals_config_path)
         cfg['spath'] = spath
+
     elif (cfg_path is None) and (spath is None):
         print('Choose config yaml file.')
         cfg_path = fm2p.select_file(
             title='Choose config yaml file.',
             filetypes=[('YAML', '*.yaml'),('YML', '*.yml'),]
         )
-        with open(cfg_path, 'r') as infile:
-            cfg = yaml.load(infile, Loader=yaml.FullLoader)
+        cfg = fm2p.read_yaml(cfg_path)
+
     elif (cfg_path is not None):
-        with open(cfg_path, 'r') as infile:
-            cfg = yaml.load(infile, Loader=yaml.FullLoader)
+        cfg = fm2p.read_yaml(cfg_path)
 
     # Find the number of recordings in the session
     # Every folder in the session directory is assumed to be a recording
@@ -138,6 +137,18 @@ def preprocess(cfg_path=None, spath=None):
         # 250218_DMM_DMM038_rec_01_eyecam.avi
         full_rname = '_'.join(eyecam_raw_video.split('_')[:-1])
 
+        print('  -> Measuring locomotor behavior.')
+
+        # Topdown behavior and obstacle/arena tracking
+        top_cam = fm2p.Topcam(rpath, full_rname, cfg=cfg)
+        top_cam.add_files(
+            top_dlc_h5=topdown_pts_path,
+            top_avi=topdown_video
+        )
+        top_xyl, top_tracking_dict = top_cam.track_body()
+        arena_dict = top_cam.track_arena()
+        top_preproc_path = top_cam.save_tracking(top_tracking_dict, top_xyl, np.nan, arena_dict=arena_dict)
+
         print('  -> Aligning eye camera data streams to 2P and behavior data using TTL voltage.')
 
         eyeStart, eyeEnd = fm2p.align_eyecam_using_TTL(
@@ -159,6 +170,7 @@ def preprocess(cfg_path=None, spath=None):
             eyeT=eyecam_video_timestamps
         )
         eye_xyl, ellipse_dict = reye_cam.track_pupil()
+
         if cfg['run_cyclotorsion']:
             eye_cyclotorsion = reye_cam.measure_cyclotorsion(
                 ellipse_dict,
@@ -173,18 +185,31 @@ def preprocess(cfg_path=None, spath=None):
 
         eye_preproc_path = reye_cam.save_tracking(ellipse_dict, eye_xyl, np.nan, eye_cyclotorsion)
 
-        print('  -> Measuring locomotor behavior.')
 
-        # Topdown behavior and obstacle/arena tracking
-        top_cam = fm2p.Topcam(rpath, full_rname, cfg=cfg)
-        top_cam.add_files(
-            top_dlc_h5=topdown_pts_path,
-            top_avi=topdown_video
+        print('Calculating retinocentric and egocentric orientations.')
+        # All values in units of pixels or degrees (not cm or rads)
+        learx = top_tracking_dict['lear_x']
+        leary = top_tracking_dict['lear_y']
+        rearx = top_tracking_dict['rear_x']
+        reary = top_tracking_dict['rear_y']
+        yaw = top_tracking_dict['head_yaw_deg']
+        pillarx = arena_dict['pillar_radius'][0]
+        pillary = arena_dict['pillar_radius'][1]
+        theta = np.rad2deg(ellipse_dict['theta'])
+
+        headx = np.array([np.mean([rearx[f], learx[f]]) for f in range(len(rearx))])
+        heady = np.array([np.mean([reary[f], leary[f]]) for f in range(len(reary))])
+
+        pillar_ego, pillar_retino = fm2p.calc_reference_frames(
+            cfg,
+            headx,
+            heady,
+            yaw,
+            pillarx,
+            pillary,
+            theta
         )
-        top_xyl, top_tracking_dict = top_cam.track_body()
-        # arena_dict = top_cam.track_arena(vidpath_for_annotation=topdown_video)
-        # topvid_arr = fm2p.pack_video_frames(top_cam.top_avi)
-        top_preproc_path = top_cam.save_tracking(top_tracking_dict, top_xyl, np.nan, arena_dict=None)
+        # TODO: save the pillar retino/ego angles out
 
         print('  -> Running spike inference.')
 
@@ -227,6 +252,8 @@ def preprocess(cfg_path=None, spath=None):
 
             cfg[rname] = temp_dict
 
+        
+
 
     # If a real config file path was given, write the updated config file to a new path
     if cfg_path is not None:
@@ -235,8 +262,7 @@ def preprocess(cfg_path=None, spath=None):
 
         # Write a new version of the config file. Maybe change this to overwrite previous?
         _newsavepath = os.path.join(os.path.split(cfg_path)[0], 'preprocessed_config.yaml')
-        with open(_newsavepath, 'w') as outfile:
-            yaml.dump(cfg, outfile, default_flow_style=False)
+        fm2p.write_yaml(_newsavepath, cfg)
 
 
 if __name__ == '__main__':

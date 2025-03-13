@@ -3,12 +3,13 @@ Preprocessing and analysis for freely moving two-photon data.
 DMM, 2024
 """
 
-from fm2p.utils.helper import (
+from .utils.helper import (
     split_xyl,
-    apply_liklihood_thresh
+    apply_liklihood_thresh,
+    str_to_bool
 )
 
-from fm2p.utils.paths import (
+from .utils.paths import (
     choose_most_recent,
     up_dir,
     find,
@@ -17,7 +18,7 @@ from fm2p.utils.paths import (
     list_subdirs
 )
 
-from fm2p.utils.time import (
+from .utils.time import (
     read_timestamp_series,
     interp_timestamps,
     read_timestamp_file,
@@ -28,47 +29,50 @@ from fm2p.utils.time import (
     find_closest_timestamp
 )
 
-from fm2p.utils.cameras import (
+from .utils.cameras import (
     deinterlace,
     flip_headcams,
     run_pose_estimation,
     pack_video_frames,
     compute_camera_distortion,
-    undistort_video
+    undistort_video,
+    load_video_frame
 )
 
-from fm2p.utils.eyecam import Eyecam
+from .utils.eyecam import Eyecam
 
-from fm2p.utils.files import (
+from .utils.files import (
     open_dlc_h5,
     write_h5,
-    read_h5
+    read_h5,
+    read_yaml,
+    write_yaml
 )
 
-from fm2p.utils.filter import (
+from .utils.filter import (
     convfilt,
     sub2ind,
     nanmedfilt
 )
 
-from fm2p.utils.topcam import Topcam
+from .utils.topcam import Topcam
 
-from fm2p.utils.twop import TwoP
+from .utils.twop import TwoP
 
-from fm2p.preprocess import preprocess
+from .preprocess import preprocess
 
-from fm2p.utils.cmap import (
+from .utils.cmap import (
     make_parula,
     make_rainbow_legend
 )
 
-from fm2p.utils.walls import (
+from .utils.walls import (
     Wall,
     closest_wall_per_ray,
     calc_rays
 )
 
-from fm2p.utils.ebc import (
+from .utils.ebc import (
     calculate_egocentric_rate_map,
     calc_EBC,
     calc_show_rate_maps,
@@ -77,22 +81,45 @@ from fm2p.utils.ebc import (
     plot_egocentic_wall_positions
 )
 
-from fm2p.utils.behavior import (
+from .utils.behavior import (
     plot_yaw_distribution,
     plot_speed_distribution,
     plot_movement_yaw_distribution
 )
 
-from fm2p.utils.alignment import (
+from .utils.alignment import (
     align_eyecam_using_TTL
 )
 
-from fm2p.utils.polygon_translation import user_polygon_translation
+from .utils.frame_annotation import (
+    user_polygon_translation,
+    place_points_on_image
+)
 
-from fm2p.utils.correlation import nanxcorr
+from .utils.correlation import nanxcorr
 
-from fm2p.utils.gui_funcs import (
+from .utils.gui_funcs import (
     select_file,
     select_directory,
     get_string_input
 )
+
+from .utils.ref_frame import (
+    angle_to_target,
+    calc_reference_frames
+)
+
+# from .utils.LNP_helpers import (
+#     rough_penalty,
+#     find_param,
+#     make_varmap
+# )
+
+# from .utils.LNP_model import (
+#     linear_nonlinear_poisson_model,
+#     fit_LNLP_model,
+#     fit_all_LNLP_models
+# )
+
+# from .fit_model import fit_model
+
