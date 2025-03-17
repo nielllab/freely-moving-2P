@@ -139,3 +139,11 @@ from.utils.LNP_eval import (
 
 from .fit_model import fit_model
 
+from .summarize_model_fit import summarize_model_fit
+
+from .utils.LNP_summary import (
+    tuning_curve,
+    plot_tuning,
+    write_detailed_cell_summary
+)
+

@@ -65,52 +65,53 @@ def fit_model(cfg_path=None):
         speed = np.append(speed, speed[-1])
         use = speed > cfg['speed_thresh']
 
-        for lag_val in cfg['lags']:
+        # Bin behavior data into variable maps. At the same time, be sure to drop the
+        # stationary periods.
+        mapP = fm2p.make_varmap(pupil[use], pupil_bins)
+        mapR = fm2p.make_varmap(retinocentric[use], retino_bins, circ=True)
+        mapE = fm2p.make_varmap(egocentric[use], ego_bins, circ=True)
+        var_maps = [mapP, mapR, mapE]
 
-            spiketrains = np.zeros([
-                np.size(spikes,0),
-                np.sum(use)
-            ]) * np.nan
+        if cfg['compute_model_performance']:
+            for lag_val in cfg['lags']:
 
-            # Apply time lag
-            # Want to shift the spike train forwards so that behavior precedes neural
-            # activity, so sign of lag_frames should be positive. Then, once lag is applied,
-            # drop frames that are stationary in the behavior data.
-            for cell_i in range(np.size(spikes,0)):
-                spiketrains[cell_i,:] = np.roll(spikes[cell_i,:], shift=lag_val)[use]
+                spiketrains = np.zeros([
+                    np.size(spikes,0),
+                    np.sum(use)
+                ]) * np.nan
 
-            # Bin behavior data into variable maps. At the same time, be sure to drop the
-            # stationary periods.
-            mapP = fm2p.make_varmap(pupil[use], pupil_bins)
-            mapR = fm2p.make_varmap(retinocentric[use], retino_bins, circ=True)
-            mapE = fm2p.make_varmap(egocentric[use], ego_bins, circ=True)
-            var_maps = [mapP, mapR, mapE]
+                # Apply time lag
+                # Want to shift the spike train forwards so that behavior precedes neural
+                # activity, so sign of lag_frames should be positive. Then, once lag is applied,
+                # drop frames that are stationary in the behavior data.
+                for cell_i in range(np.size(spikes,0)):
+                    spiketrains[cell_i,:] = np.roll(spikes[cell_i,:], shift=lag_val)[use]
 
-            lagstr = str(lag_val)
-            if '-' in lagstr:
-                lagstr = lagstr.replace('-','neg')
-            else:
-                lagstr = 'pos{}'.format(lagstr)
-            model_name = '{}_lag_{}'.format(cfg['model_save_key'], lag_val)
-            model_save_path = os.path.join(rec_dir, model_name)
-            if not os.path.isdir(model_save_path):
-                os.mkdir(model_save_path)
+                lagstr = str(lag_val)
+                if '-' in lagstr:
+                    lagstr = lagstr.replace('-','neg')
+                else:
+                    lagstr = 'pos{}'.format(lagstr)
+                model_name = '{}_lag_{}'.format(cfg['model_save_key'], lagstr)
+                model_save_path = os.path.join(rec_dir, model_name)
+                if not os.path.isdir(model_save_path):
+                    os.mkdir(model_save_path)
 
-            print('  -> Fiting model {}.'.format(model_name))
+                print('  -> Fiting model {}.'.format(model_name))
 
-            model_results = fm2p.fit_all_LNLP_models(
-                var_maps,
-                var_bins,
-                spiketrains,
-                savedir=model_save_path
-            )
+                model_results = fm2p.fit_all_LNLP_models(
+                    var_maps,
+                    var_bins,
+                    spiketrains,
+                    savedir=model_save_path
+                )
 
         # Calculate the model fits for the null spikes (rolled random temporal distances from
         # ground truth). Do I need to calculate a different null distribution across rolls? Probably
         # not. 
         if cfg['compute_null_model_performance']:
 
-            spiketrains = np.zeros_like(spikes) * np.nan
+            spiketrains = np.zeros([np.size(spikes,0), np.sum(use)]) * np.nan
 
             # Add a random temporal roll to the spike data, with a size somewhere
             # from 15% to 85% of the length of the recording.
@@ -128,7 +129,7 @@ def fit_model(cfg_path=None):
                 )
 
                 # Apply the roll
-                rolled_spikes = spikes[cell_i,:].copy()
+                rolled_spikes = spikes[cell_i,use].copy()
                 spiketrains[cell_i,:] = np.roll(rolled_spikes, shift=shift_dist)
 
             # Make the directories

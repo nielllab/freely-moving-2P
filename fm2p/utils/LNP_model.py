@@ -1,5 +1,6 @@
 
 import os
+from tqdm import tqdm
 import numpy as np
 from scipy import sparse
 from datetime import datetime
@@ -105,8 +106,6 @@ def linear_nonlinear_poisson_model(param, X, Y, modelType, param_counts):
     hessian = hessian_glm + sparse.block_diag(hessstack).toarray()
 
     return float(f), df, hessian
-
-
 
 
 
@@ -403,10 +402,10 @@ def fit_all_LNLP_models(data_vars, data_bins, spikes, savedir):
     amfstart = datetime.now()
 
     # Iterate through all models
-    for mi, mk in enumerate(model_keys):
+    for mi, mk in tqdm(enumerate(model_keys)):
 
-        print('Fitting model for {}     (model {}/{})'.format(mk, mi+1, len(model_keys)))
-        mfstart = datetime.now()
+        # print('Fitting model for {}     (model {}/{})'.format(mk, mi+1, len(model_keys)))
+        # mfstart = datetime.now()
 
         # Set up multiprocessing 
         param_mp = [
@@ -441,9 +440,9 @@ def fit_all_LNLP_models(data_vars, data_bins, spikes, savedir):
         savepath = os.path.join(savedir, 'model_{}_results.h5'.format(mk))
         fm2p.write_h5(savepath, current_model_results)
 
-        mfend = datetime.now()
-        mf_timedelta = (mfend - mfstart).total_seconds() / 60.
-        print('  Time to fit: {} min'.format(int(mf_timedelta)))
+        # mfend = datetime.now()
+        # mf_timedelta = (mfend - mfstart).total_seconds() / 60.
+        # print('  Time to fit: {} min'.format(int(mf_timedelta)))
 
     pdf.close()
 
