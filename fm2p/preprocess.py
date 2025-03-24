@@ -100,22 +100,26 @@ def preprocess(cfg_path=None, spath=None):
 
         if cfg['run_pose_estimation']:
 
-            print('  -> Running pose estimation for eye camera video.')
+            if cfg['eye_DLC_project'] != 'none':
 
-            # Run dlc on eyecam video
-            fm2p.run_pose_estimation(
-                eyecam_deinter_video,
-                project_cfg=cfg['eye_DLC_project'],
-                filter=False
-            )
+                print('  -> Running pose estimation for eye camera video.')
 
-            print('  -> Running pose estimation for topdown camera video.')
+                # Run dlc on eyecam video
+                fm2p.run_pose_estimation(
+                    eyecam_deinter_video,
+                    project_cfg=cfg['eye_DLC_project'],
+                    filter=False
+                )
 
-            fm2p.run_pose_estimation(
-                topdown_video,
-                project_cfg=cfg['top_DLC_project'],
-                filter=False
-            )
+            if cfg['top_DLC_project'] != 'none':
+
+                print('  -> Running pose estimation for topdown camera video.')
+                
+                fm2p.run_pose_estimation(
+                    topdown_video,
+                    project_cfg=cfg['top_DLC_project'],
+                    filter=False
+                )
 
         # Find dlc files
         eyecam_pts_path = fm2p.find('*_eyecam_deinterDLC_resnet50_*freely_moving_eyecams*.h5', rpath, MR=True)
@@ -209,6 +213,7 @@ def preprocess(cfg_path=None, spath=None):
         pillarx = arena_dict['pillar_centroid']['x']
         pillary = arena_dict['pillar_centroid']['y']
         theta = np.rad2deg(ellipse_dict['theta'])
+        phi = np.rad2deg(ellipse_dict['phi'])
 
         headx = np.array([np.mean([rearx[f], learx[f]]) for f in range(len(rearx))])
         heady = np.array([np.mean([reary[f], leary[f]]) for f in range(len(reary))])
@@ -216,6 +221,11 @@ def preprocess(cfg_path=None, spath=None):
         eyeT = fm2p.read_timestamp_file(eyecam_video_timestamps, position_data_length=len(theta))
         theta_interp = fm2p.interpT(
             theta[eyeStart:eyeEnd],
+            eyeT[eyeStart:eyeEnd] - eyeT[eyeStart],
+            twopT
+        )
+        phi_interp = fm2p.interpT(
+            phi[eyeStart:eyeEnd],
             eyeT[eyeStart:eyeEnd] - eyeT[eyeStart],
             twopT
         )
@@ -243,6 +253,10 @@ def preprocess(cfg_path=None, spath=None):
 
         preprocessed_dict['eyeT_startInd'] = eyeStart
         preprocessed_dict['eyeT_endInd'] = eyeEnd
+        preprocessed_dict['theta_interp'] = theta_interp
+        preprocessed_dict['phi_interp'] = phi_interp
+        preprocessed_dict['head_x'] = headx
+        preprocessed_dict['head_y'] = heady
 
         if len(cyclotorsion_dict.keys()) > 0:
             preprocessed_dict = {**preprocessed_dict, **cyclotorsion_dict}

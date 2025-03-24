@@ -41,7 +41,7 @@ def summarize_model_fit():
 
 
     print('Reading in model fit results.')
-    # model3_path = os.path.join(models_dir, 'LNLP_fit_results_multihot')
+
     model = fm2p.read_models(model_dir)
     savepath = os.path.join(model_dir, 'cell_summary_LNP_v01.pdf')
 
@@ -57,6 +57,14 @@ def summarize_model_fit():
     print('Reading in preprocessed experiment data.')
     preprocdata = fm2p.read_h5(preproc_path)
 
+    model_save_key = os.path.split(model_dir)[1]
+    if 'neg' in model_save_key:
+        shift_val = -int(model_save_key.split('neg')[1])
+    elif 'pos' in model_save_key:
+        shift_val = int(model_save_key.split('pos')[1])
+    else:
+        print('Could not find pos/neg key in model directory.')
+
     print('Writing summary file.')
     fm2p.write_detailed_cell_summary(
         model,
@@ -64,7 +72,7 @@ def summarize_model_fit():
         savepath=savepath,
         preprocdata=preprocdata,
         null_data=model_null,
-        lag_val=0
+        lag_val=shift_val
     )
 
 if __name__ == '__main__':

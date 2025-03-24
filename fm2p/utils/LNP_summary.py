@@ -79,12 +79,9 @@ def write_detailed_cell_summary(model_data, savepath, var_bins, preprocdata,
     
     pupil_bins, retino_bins, ego_bins = var_bins
 
-    # twopT = preprocdata['twopT']
-
     pupil = preprocdata['pupil_from_head'].copy()
     ego = preprocdata['egocentric'].copy()
     ret = preprocdata['retinocentric'].copy()
-
     dist = preprocdata['dist_to_center'].copy()
 
     speed = preprocdata['speed']
@@ -95,8 +92,6 @@ def write_detailed_cell_summary(model_data, savepath, var_bins, preprocdata,
     spikes = np.zeros_like(raw_spikes) * np.nan
     for i in range(np.size(raw_spikes,0)):
         spikes[i,:] = np.roll(raw_spikes[i,:], shift=lag_val)
-
-    # split_ind = int(np.round(np.sum(use)/2))
 
     if (responsive_inds is None) and (null_data is not None):
         responsive_thresh, _ = fm2p.determine_responsiveness_from_null(model_data, null_data)
@@ -172,15 +167,18 @@ def write_detailed_cell_summary(model_data, savepath, var_bins, preprocdata,
         dist_cent, dist_tuning, dist_err = tuning_curve(
             spikes[c_i,use][np.newaxis,:], dist[use], dist_bins)
 
-        fig = plt.figure(constrained_layout=True, figsize=(11,10), dpi=300)
+        fig = plt.figure(constrained_layout=False, figsize=(12,10), dpi=300)
         spec = gridspec.GridSpec(ncols=2, nrows=6, figure=fig)
 
-        row0 = spec[0,0].subgridspec(1,3) # tuning curves
-        row1 = spec[1,0].subgridspec(1,3) # split tuning curves
-        row2 = spec[2,0].subgridspec(1,3) # tuning to other variables
-        row3 = spec[3,0].subgridspec(1,3) # parameters
-        row4 = spec[4,0].subgridspec(1,1) # LLH
-        row5 = spec[5,0].subgridspec(1,2) # signed-rank
+        row0 = spec[0,0].subgridspec(1,3, wspace=0.35) # tuning curves
+        row1 = spec[1,0].subgridspec(1,3, wspace=0.35) # split tuning curves
+        row2 = spec[2,0].subgridspec(1,3, wspace=0.35) # tuning to other variables
+        row3 = spec[3,0].subgridspec(1,3, wspace=0.35) # parameters
+        row4 = spec[4,0].subgridspec(1,1, wspace=0.35) # LLH
+        row5 = spec[5,0].subgridspec(1,2, wspace=0.35) # signed-rank
+
+        # for row in [row0,row1,row2,row3,row4,row5]:
+        #     row.update(wspace=0.5)
 
         col2 = spec[:,1].subgridspec(7,1)
 
@@ -244,9 +242,16 @@ def write_detailed_cell_summary(model_data, savepath, var_bins, preprocdata,
         t5.set_xlabel('retino tuning (deg)')
         t6.set_xlabel('ego tuning (deg)')
         t7.set_xlabel('speed (cm/s)')
-        t8.set_xlabel('distance (cm)')
-
+        # t8.set_xlabel('distance (cm)')
+        t8.axis('off')
         t9.axis('off')
+
+        for ax in [t2,t3,t5,t6,p2,p3]:
+            ax.set_xlim([-180,180])
+        for ax in [t1,t4,p1]:
+            ax.set_xlim([0,100])
+        for ax in [t1,t2,t3,t4,t5,t6,p1,p2,p3,t7]:
+            ax.set_ylabel('sp/s')
 
         (predP, stderrP), (predR, stderrR), (predE, stderrE) = fm2p.calc_scaled_LNLP_tuning_curves(
                 model_data, c_s, ret_stderr=True, params=None, param_stderr=None)
@@ -280,7 +285,6 @@ def write_detailed_cell_summary(model_data, savepath, var_bins, preprocdata,
 
         fig.suptitle('cell {}; bestModel={}'.format(c_s, eval_results['best_model']))
 
-        fig.tight_layout()
         pdf.savefig(fig)
         plt.close()
 
