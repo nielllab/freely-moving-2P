@@ -81,12 +81,20 @@ def user_polygon_translation(pts, image=None):
     return dp.geometry
 
 
-def place_points_on_image(image, num_pts=8):
+def place_points_on_image(image, num_pts=8, color='red', tight_scale=False):
     # Displays an image and allows the user to click to place points.
     # After points are placed, returns the x and y coordinates of those points.
     
     fig, ax = plt.subplots(figsize=(9,8))
-    ax.imshow(image, cmap='gray')
+
+    if tight_scale is True:
+        vmin = np.percentile(image.flatten(), 10)
+        vmax = np.percentile(image.flatten(), 90)
+        ax.imshow(image, cmap='gray', vmin=vmin, vmax=vmax)
+    
+    else:
+        ax.imshow(image, cmap='gray')
+    
     
     x_positions = []
     y_positions = []
@@ -106,7 +114,7 @@ def place_points_on_image(image, num_pts=8):
                 y_positions.append(y)
                 
                 # Add a red point at the clicked location
-                ax.plot(x, y, '.', color='tab:red')
+                ax.plot(x, y, '.', color=color)
                 plt.draw()
 
             # If all points have been clicked, close the figure

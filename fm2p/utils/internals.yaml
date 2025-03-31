@@ -19,7 +19,7 @@ likelihood_thresh: 0.99
 
 # Paths
 eye_DLC_project: 'T:/dlc_projects/freely_moving_eyecams_02-dylan-2025-02-12/config.yaml'
-top_DLC_project: 'T:/dlc_projects/freely_moving_topdown_05-dylan-2025-02-20/config.yaml'
+top_DLC_project: 'none' # 'T:/dlc_projects/freely_moving_topdown_05-dylan-2025-02-20/config.yaml'
 
 # Eyecam tracking
 eye_ellipse_thresh: 0.85

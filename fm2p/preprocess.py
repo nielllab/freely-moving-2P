@@ -9,7 +9,6 @@ DMM, 2025
 import os
 import argparse
 import numpy as np
-import yaml
 
 import fm2p
 
@@ -25,7 +24,7 @@ def preprocess(cfg_path=None, spath=None):
 
     # NOTE: each recording directory should have no subdirectories / be completely flat. the session
     # directory should have one directory per recording and no other subdirectories that are not
-    # independent recordings
+    # independent recordings. only exception is the suite2p directory
 
     # Read in the config file
     # If no config path, use defaults but ignore the spath from default
@@ -147,8 +146,9 @@ def preprocess(cfg_path=None, spath=None):
             top_dlc_h5=topdown_pts_path,
             top_avi=topdown_video
         )
-        top_xyl, top_tracking_dict = top_cam.track_body()
         arena_dict = top_cam.track_arena()
+        pxls2cm = arena_dict['pxls2cm']
+        top_xyl, top_tracking_dict = top_cam.track_body(pxls2cm)
 
         print('  -> Aligning eye camera data streams to 2P and behavior data using TTL voltage.')
 
@@ -210,8 +210,6 @@ def preprocess(cfg_path=None, spath=None):
         rearx = top_tracking_dict['rear_x']
         reary = top_tracking_dict['rear_y']
         yaw = top_tracking_dict['head_yaw_deg']
-        pillarx = arena_dict['pillar_centroid']['x']
-        pillary = arena_dict['pillar_centroid']['y']
         theta = np.rad2deg(ellipse_dict['theta'])
         phi = np.rad2deg(ellipse_dict['phi'])
 

@@ -53,10 +53,9 @@ class Topcam():
         self.top_avi = top_avi
 
 
-    def track_body(self):
+    def track_body(self, pxls2cm):
 
         likelihood_thresh = self.cfg['likelihood_thresh']
-        arena_width_cm = self.cfg['arena_width_cm']
 
         # Read DLC data and filter by likelihood
         xyl, _ = fm2p.open_dlc_h5(self.top_dlc_h5)
@@ -66,23 +65,16 @@ class Topcam():
         x_vals = fm2p.apply_liklihood_thresh(x_vals, likelihood, threshold=likelihood_thresh)
         y_vals = fm2p.apply_liklihood_thresh(y_vals, likelihood, threshold=likelihood_thresh)
 
-        # Conversion from pixels to cm
-        left = 'tl_x' # top left X
-        right = 'tr_x' # top right X
-        
-        dist_pxls = np.nanmedian(x_vals[right]) - np.nanmedian(x_vals[left])
-        pxls2cm = dist_pxls / arena_width_cm
-
         # Topdown speed using neck point
-        smooth_x = fm2p.convfilt(fm2p.nanmedfilt(x_vals['pad_r_x'], 7)[0], box_pts=20) # head_backleft_x
-        smooth_y = fm2p.convfilt(fm2p.nanmedfilt(y_vals['pad_r_y'], 7)[0], box_pts=20) # head_backleft_y
+        smooth_x = fm2p.convfilt(fm2p.nanmedfilt(x_vals['pad_nose_x'], 7)[0], box_pts=20)
+        smooth_y = fm2p.convfilt(fm2p.nanmedfilt(y_vals['pad_nose_y'], 7)[0], box_pts=20)
         top_speed = np.sqrt(np.diff((smooth_x*60) / pxls2cm)**2 + np.diff((smooth_y*60) / pxls2cm)**2)
 
         # Get head angle from ear points
-        lear_x = fm2p.nanmedfilt(x_vals['pad_r_x'], 7)[0] # head_backleft_x
-        lear_y = fm2p.nanmedfilt(y_vals['pad_r_y'], 7)[0] # head_backleft_y
-        rear_x = fm2p.nanmedfilt(x_vals['pad_l_x'], 7)[0] # head_backright_x
-        rear_y = fm2p.nanmedfilt(y_vals['pad_l_y'], 7)[0] # head_backright_y
+        lear_x = fm2p.nanmedfilt(x_vals['pad_r_x'], 7)[0]
+        lear_y = fm2p.nanmedfilt(y_vals['pad_r_y'], 7)[0]
+        rear_x = fm2p.nanmedfilt(x_vals['pad_l_x'], 7)[0]
+        rear_y = fm2p.nanmedfilt(y_vals['pad_l_y'], 7)[0]
 
         # Rotate 90deg because ears are perpendicular to head yaw
         head_yaw = np.arctan2((lear_y - rear_y), (lear_x - rear_x)) + np.deg2rad(90)
@@ -109,7 +101,6 @@ class Topcam():
             'movement_yaw_deg': movement_yaw_deg,
             'x_displacement': x_disp,
             'y_displacement': y_disp,
-            'pxls2cm': pxls2cm
         }
 
         return xyl, topcam_dict
@@ -119,9 +110,30 @@ class Topcam():
 
         frame = fm2p.load_video_frame(self.top_avi, fr=np.nan, ds=1.)
 
+        print('Place points at each corner of the arena. Order MUST be [top-left, top-right, bottom-left, bottom-right].')
+
+        user_arena_x, user_arena_y = fm2p.place_points_on_image(
+            frame,
+            num_pts=4,
+            color='tab:blue',
+            tight_scale=True
+        )
+
+        # Conversion from pixels to cm
+        arena_width_cm = self.cfg['arena_width_cm']
+        # right - left
+        pxls2cm_1 = (user_arena_x[1] - user_arena_x[0]) / arena_width_cm
+        pxls2cm_2 = (user_arena_x[3] - user_arena_x[2]) / arena_width_cm
+        pxls2cm = np.nanmean([pxls2cm_1, pxls2cm_2])
+
         print('Place points around the perimeter of the pillar (align to the top of the pillar, even if that is different from the base).')
 
-        user_pillar_x, user_pillar_y = fm2p.place_points_on_image(frame, num_pts=8)
+        user_pillar_x, user_pillar_y = fm2p.place_points_on_image(
+            frame,
+            num_pts=8,
+            color='tab:red',
+            tight_scale=True
+        )
 
         # Convert from two lists of points to a single list of (x,y) pairs.
         user_pts = []
@@ -151,20 +163,20 @@ class Topcam():
 
         arena_dict = {
             'arenaTL': {
-                'x': np.nanmedian(x_vals['tl_x']),
-                'y': np.nanmedian(y_vals['tl_y'])
+                'x': user_arena_x[0],
+                'y': user_arena_y[0]
             },
             'arenaTR': {
-                'x': np.nanmedian(x_vals['tr_x']),
-                'y': np.nanmedian(y_vals['tr_y'])
+                'x': user_arena_x[1],
+                'y': user_arena_y[1]
             },
             'arenaBR': {
-                'x': np.nanmedian(x_vals['br_x']),
-                'y': np.nanmedian(y_vals['br_y'])
+                'x': user_arena_x[3],
+                'y': user_arena_y[3]
             },
             'arenaBL': {
-                'x': np.nanmedian(x_vals['bl_x']),
-                'y': np.nanmedian(y_vals['bl_y'])
+                'x': user_arena_x[2],
+                'y': user_arena_y[2]
             },
             'pillar_x': pillar_x,
             'pillar_y': pillar_y,
@@ -172,7 +184,8 @@ class Topcam():
             'pillar_centroid': {
                 'x': pillar_centroid[0],
                 'y': pillar_centroid[1]
-            }
+            },
+            'pxls2cm': pxls2cm
         }
 
         return arena_dict
