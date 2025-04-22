@@ -39,6 +39,7 @@ def calc_reference_frames(cfg, headx, heady, yaw, theta, arena_dict):
 
     if np.size(theta) != np.size(pillar_ego):
         print('Check length of theta versus egocentric angle, which do not match! Is theta already aligned by TTL values and interpolated to 2P timestamps?')
+        print('Sizes are theta={}, ego={}'.format(np.size(theta), np.size(pillar_ego)))
 
     # Calculate retinocentric angle to the pillar.
     # For now, only calculated in the horizontal plane.
