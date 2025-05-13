@@ -156,7 +156,9 @@ def summarize_revcorr():
     pdf.savefig(fig)
     plt.close()
 
-    cell_pvals = np.zeros([np.size(spikes, 0), 3, len(lag_vals)]) * np.nan
+    # axis 1: {pupil, retino, ego}
+    # axis 3: {p value, correlation}
+    cell_pvals = np.zeros([np.size(spikes, 0), 3, len(lag_vals), 2]) * np.nan
 
 
     ### SUMMARIZE TUNING OF INDIVIDUAL CELLS
@@ -188,17 +190,17 @@ def summarize_revcorr():
             )
 
             pupil_pval_, pupil_cc = fm2p.calc_tuning_reliability(
-                spiketrains[c_i, :],
+                spiketrains[c_i, :][np.newaxis,:],
                 pupil[use],
                 pupil_bins,
             )
             retino_pval_, retino_cc = fm2p.calc_tuning_reliability(
-                spiketrains[c_i, :],
+                spiketrains[c_i, :][np.newaxis,:],
                 retinocentric[use],
                 retino_bins,
             )
             ego_pval_, ego_cc = fm2p.calc_tuning_reliability(
-                spiketrains[c_i, :],
+                spiketrains[c_i, :][np.newaxis,:],
                 egocentric[use],
                 ego_bins,
             )
@@ -266,120 +268,124 @@ def summarize_revcorr():
         plt.close()
 
     np.save(os.path.join(savepath, 'cell_p_and_cc_values.npy'), cell_pvals)
+    np.save(os.path.join(savepath, 'pupil_tunings.npy'), pupil_tunings)
+    np.save(os.path.join(savepath, 'ret_tunings.npy'), ret_tunings)
+    np.save(os.path.join(savepath, 'ego_tunings.npy'), ego_tunings)
 
-    # Calculate the best lag value for each cell
-    # response_peak = np.zeros([np.size(retino_xcorr,0), 3]) * np.nan
-    # xcorr_lag_vals = np.arange(-num_cc_bins//2, (num_cc_bins//2)+1)
-    # useccinds = np.zeros([np.size(retino_xcorr,0),3])
-
-    # for c_i in range(np.size(retino_xcorr,0)):
-    #     xcorr_across_lags = np.zeros([np.size(retino_xcorr,1),3]) * np.nan
-        
-    #     for lag_i in range(np.size(retino_xcorr,1)):
-    #         xcorr_across_lags[lag_i,0] = xcorr_lag_vals[np.nanargmax(pupil_xcorr[c_i,lag_i,:])]
-    #         xcorr_across_lags[lag_i,1] = xcorr_lag_vals[np.nanargmax(retino_xcorr[c_i,lag_i,:])]
-    #         xcorr_across_lags[lag_i,2] = xcorr_lag_vals[np.nanargmax(ego_xcorr[c_i,lag_i,:])]
-    #         if all_mods[c_i, lag_i, 0, 0] < 0.33:
-    #             xcorr_across_lags[lag_i,0] = np.nan
-    #         if all_mods[c_i, lag_i, 1, 0] < 0.33:
-    #             xcorr_across_lags[lag_i,1] = np.nan
-    #         if all_mods[c_i, lag_i, 2, 0] < 0.33:
-    #             xcorr_across_lags[lag_i,2] = np.nan
-        
-    #     for i in range(3):
-    #         # if is all NaNs (i.e., no lag had a cc that showed doubling of firing rate)
-    #         if np.sum(np.isnan(xcorr_across_lags[:,i])) == len(xcorr_across_lags[:,i]):
-    #             response_peak[c_i,i] = np.nan
-    #         else:
-    #             response_peak[c_i,i] = lag_vals[np.nanargmax(xcorr_across_lags[:,i])]
-    #             useccinds[c_i,i] = 1
-
-    # fig, [ax1,ax2,ax3] = plt.subplots(1,3, figsize=(6,2), dpi=300)
-    # for c_i in range(np.size(pupil_xcorr,0)):
-    #     if useccinds[c_i,0]:
-    #         ax1.plot(np.arange(-num_cc_bins//2,num_cc_bins//2), pupil_xcorr[c_i,3,:], alpha=0.4, lw=1)
-    #     if useccinds[c_i,1]:
-    #         ax2.plot(np.arange(-num_cc_bins//2,num_cc_bins//2), retino_xcorr[c_i,3,:], alpha=0.4, lw=1)
-    #     if useccinds[c_i,2]:
-    #         ax3.plot(np.arange(-num_cc_bins//2,num_cc_bins//2), ego_xcorr[c_i,3,:], alpha=0.4, lw=1)
-    # for ax in [ax1,ax2,ax3]:
-    #     ax.set_xlim([-num_cc_bins//2,num_cc_bins//2])
-    #     ax.set_ylim([-1,1])
-    # ax1.set_title('pupil')
-    # fig.suptitle('nanxcorr at 0 ms')
-    # fig.tight_layout()
-    # pdf.savefig(fig)
-    # plt.close()
-
-    fig, axs = plt.subplots(9,3, figsize=(6,10), dpi=300)
-    _setmax = 0
-    for lag_i, lagval in enumerate(lag_vals):
-        lagval = (1/7.49) * 1000 * lagval
-
-        h = axs[lag_i,0].hist(pupil_xcorr[:,lag_i], color='tab:blue', bins=np.linspace(-1,1,18))
-        if np.nanmax(h[0]) > _setmax:
-            _setmax = np.nanmax(h[0])
-        h = axs[lag_i,1].hist(retino_xcorr[:,lag_i], color='tab:orange', bins=np.linspace(-1,1,18))
-        if np.nanmax(h[0]) > _setmax:
-            _setmax = np.nanmax(h[0])
-        h = axs[lag_i,2].hist(ego_xcorr[:,lag_i], color='tab:green', bins=np.linspace(-1,1,18))
-        if np.nanmax(h[0]) > _setmax:
-            _setmax = np.nanmax(h[0])
-
-        for col in range(3):    
-            axs[lag_i,col].set_title('{:.4}ms'.format(lagval))
-    axs[0,0].set_title('pupil, lag={:.4}ms'.format((1/7.49) * 1000 * lag_vals[0]))
-    axs[0,1].set_title('retinocentric, lag={:.4}ms'.format((1/7.49) * 1000 * lag_vals[0]))
-    axs[0,2].set_title('egocentric, lag={:.4}ms'.format((1/7.49) * 1000 * lag_vals[0]))
-
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
     axs = axs.flatten()
-    for ax in axs:
-        ax.set_xlim([-1,1])
-        ax.set_ylim([0,_setmax*1.1])
-        ax.vlines(0, 0, _setmax*1.1, color='tab:red', alpha=0.5, lw=1)
-        ax.set_xlabel('xcorr')
-        ax.set_ylabel('cells')
-    fig.suptitle('cross correlation between tuning halves')
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,0,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+        axs[lag_ind].set_xlabel('p value')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+        axs[lag_ind].set_xlim([0,0.2])
+        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('pupil')
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close()
 
-
-    fig, [ax1,ax2,ax3] = plt.subplots(1,3, figsize=(6,2), dpi=300)
-    _setmax = 0
-    for lag_i, lagval in enumerate(lag_vals):
-        ax1.bar(lag_i, np.sum(pupil_xcorr[:,lag_i]>0.5), width=1, color='tab:blue')
-        ax2.bar(lag_i, np.sum(retino_xcorr[:,lag_i]>0.5), width=1, color='tab:orange')
-        ax3.bar(lag_i, np.sum(ego_xcorr[:,lag_i]>0.5), width=1, color='tab:green')
-
-        for x in [np.sum(pupil_xcorr[:,lag_i]>0.5), np.sum(retino_xcorr[:,lag_i]>0.5), np.sum(ego_xcorr[:,lag_i]>0.5)]:
-            if x>_setmax:
-                _setmax = x
-
-    ax1.set_title('pupil')
-    ax2.set_title('retinocentric')
-    ax3.set_title('egocentric')
-    for ax in [ax1,ax2,ax3]:
-        ax.set_xlabel('lag (ms)')
-        ax.set_ylabel('cells with xcorr>0.5')
-        ax.set_ylim([0,_setmax])
-        ax.set_xticks(np.arange(len(lag_vals)), labels=[int((1/7.49) * 1000 * l) for l in lag_vals], rotation=90)
-    fig.suptitle('cells above xcorr thresh at each lag')
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
+    axs = axs.flatten()
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,0,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('cc')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,0,lag_ind,1]>0.5)))
+        axs[lag_ind].set_xlim([-1,1])
+        axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('pupil')
     fig.tight_layout()
     pdf.savefig(fig)
     plt.close()
 
-    # fig, [ax1,ax2,ax3] = plt.subplots(1,3, figsize=(6.5,2), dpi=300)
-    # for lag_i, lagval in enumerate(lag_vals):
-    #     ax1.hist(response_peak[:,0]  * ((1/7.49) * 1000), color='tab:blue')
-    #     ax2.hist(response_peak[:,1]  * ((1/7.49) * 1000), color='tab:orange')
-    #     ax3.hist(response_peak[:,2]  * ((1/7.49) * 1000), color='tab:green')
-    # for ax in [ax1,ax2,ax3]:
-    #     ax.set_xlabel('peak lag (ms)')
-    #     ax.set_ylabel('cells')
-    #     ax.set_xlim([-500,600])
-    # pdf.savefig(fig)
-    # plt.close()
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
+    axs = axs.flatten()
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,1,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+        axs[lag_ind].set_xlabel('p value')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+        axs[lag_ind].set_xlim([0,0.2])
+        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('retinocentric')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close()
+
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
+    axs = axs.flatten()
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,1,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('cc')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,1,lag_ind,1]>0.5)))
+        axs[lag_ind].set_xlim([-1,1])
+        axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('retinocentric')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close()
+
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
+    axs = axs.flatten()
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,2,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+        axs[lag_ind].set_xlabel('p value')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+        axs[lag_ind].set_xlim([0,0.2])
+        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('egocentric')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close()
+
+    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
+    axs = axs.flatten()
+    for lag_ind, lag_val in enumerate(lag_vals):
+        hist = axs[lag_ind].hist(cell_pvals[:,2,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('cc')
+        axs[lag_ind].set_ylabel('cells')
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,2,lag_ind,1]>0.5)))
+        axs[lag_ind].set_xlim([-1,1])
+        axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
+        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    fig.suptitle('pupil')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close()
+
+    fig, ax = plt.subplots(1,1,figsize=(3,2.5),dpi=300)
+    ax.vlines(0,0,65,lw=1,ls='--',color='k')
+    ax.plot(
+        [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
+        [np.sum(cell_pvals[:,0,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        lw=2, color='tab:blue', label='pupil'
+    )
+
+    ax.plot(
+        [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
+        [np.sum(cell_pvals[:,1,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        lw=2, color='tab:orange', label='retino'
+    )
+    ax.plot(
+        [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
+        [np.sum(cell_pvals[:,2,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        lw=2, color='tab:green', label='ego'
+    )
+    ax.set_ylim([0,65])
+    ax.set_ylabel('cells cc>0.5')
+    ax.set_xlabel('lag (msec)')
+    fig.tight_layout()
+    pdf.savefig(fig)
+    plt.close()
 
 
     pdf.close()

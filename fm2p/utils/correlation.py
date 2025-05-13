@@ -53,3 +53,17 @@ def nanxcorr(x, y, maxlag=25):
     cc_out = np.hstack(np.stack(cc))
     
     return cc_out, lags
+
+
+def corr2_coeff(A, B):
+    # Row-wise mean of input arrays & subtract from input arrays themeselves
+    A_mA = A - A.mean(1)[:, None]
+    B_mB = B - B.mean(1)[:, None]
+
+    # Sum of squares across rows
+    ssA = (A_mA**2).sum(1)
+    ssB = (B_mB**2).sum(1)
+
+    # Finally get corr coeff
+    corr_coeff = np.dot(A_mA, B_mB.T) / np.sqrt(np.dot(ssA[:, None],ssB[None]))
+    return corr_coeff[0][0]

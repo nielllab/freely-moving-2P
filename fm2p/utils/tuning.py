@@ -147,15 +147,17 @@ def calc_tuning_reliability(spikes, behavior, bins, ncnk=10):
     split2_inds = np.array(np.sort(split2_inds))
     
     cent1, tuning1, err1 = tuning_curve(
-        spikes[split1_inds],
+        spikes[:, split1_inds],
         behavior[split1_inds],
         bins)
     _, tuning2, err2 = tuning_curve(
-        spikes[split2_inds],
+        spikes[:, split2_inds],
         behavior[split2_inds],
         bins)
     
-    pearson_result = pearsonr(tuning1, tuning2)
+    # print(tuning1.shape, tuning2.shape)
+    
+    pearson_result = pearsonr(tuning1.flatten(), tuning2.flatten())
     cc = pearson_result.statistic
     p_value = pearson_result.pvalue
 

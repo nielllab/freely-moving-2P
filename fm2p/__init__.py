@@ -9,6 +9,11 @@ from .utils.helper import (
     str_to_bool
 )
 
+from .utils.linalg import (
+    make_U_triangular,
+    make_L_triangular
+)
+
 from .utils.paths import (
     choose_most_recent,
     up_dir,
@@ -96,7 +101,10 @@ from .utils.frame_annotation import (
     place_points_on_image
 )
 
-from .utils.correlation import nanxcorr
+from .utils.correlation import (
+    corr2_coeff,
+    nanxcorr
+)
 
 from .utils.gui_funcs import (
     select_file,
@@ -156,3 +164,7 @@ from .utils.tuning import (
 
 from .mapRF import mapRF
 from .summarize_revcorr import summarize_revcorr
+
+from .utils.axons import (
+    get_independent_axons
+)
