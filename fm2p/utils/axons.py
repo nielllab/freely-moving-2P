@@ -7,10 +7,11 @@ import fm2p
 import imgtools
 
 
-def get_independent_axons(matpath, cc_thresh=0.5, apply_dFF_filter=False):
+def get_independent_axons(matpath, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False):
 
     mat = io.loadmat(matpath)
-    dFF = mat['data'].item()[-1].copy()
+    dff_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='DFF')[0])
+    dFF = mat['data'].item()[dff_ind].copy()
 
     if apply_dFF_filter:
         # Smooth dFF traces of all cells
@@ -45,7 +46,7 @@ def get_independent_axons(matpath, cc_thresh=0.5, apply_dFF_filter=False):
     for c in check_index:
         axon1 = perm_mat[c,0]
         axon2 = perm_mat[c,1]
-        # exclude the neuron with the lower integrated dFF
+        # Exclude the neuron with the lower integrated dFF
         if (np.sum(dFF[axon1,:]) < np.sum(dFF[axon2,:])):
             exclude_inds.append(axon1)
         elif (np.sum(dFF[axon1,:]) > np.sum(dFF[axon2,:])):
@@ -55,7 +56,9 @@ def get_independent_axons(matpath, cc_thresh=0.5, apply_dFF_filter=False):
     usecells = [c for c in list(np.arange(np.size(dFF,0))) if c not in exclude_inds]
 
     # Check correlation between global frame fluorescence and the dF/F of each axon
-    frameF = mat['data'].item()[7].copy()
+    framef_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='frame_F')[0])
+    frameF = mat['data'].item()[framef_ind].copy()
+
     gcc_vec = np.zeros([len(usecells)])
     for i,c in enumerate(usecells):
         gcc_vec[i] = fm2p.corr2_coeff(
@@ -63,13 +66,13 @@ def get_independent_axons(matpath, cc_thresh=0.5, apply_dFF_filter=False):
             frameF
         )
 
-    axon_correlates_with_globalF = np.where(gcc_vec > 0)[0]
-    usecells_gcc = [c for c in usecells if c in axon_correlates_with_globalF]
+    axon_correlates_with_globalF = np.where(gcc_vec > gcc_thresh)[0]
+    usecells_gcc = [c for c in usecells if c not in axon_correlates_with_globalF]
 
-    print(usecells)
-    print(usecells_gcc)
+    print(len(usecells), usecells)
+    print(len(usecells_gcc), usecells_gcc)
 
     dFF_out = dFF.copy()[usecells_gcc, :]
 
-    return dFF_out
+    return dFF_out, usecells
     
