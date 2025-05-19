@@ -4,7 +4,7 @@ To install this as a package within a conda environment, run `pip install -e .` 
 
 To create the conda environment from the explicit package versions in "spec-file.txt", run `conda create --name fm1 --file spec-file.txt`. New specification files can be created with `conda list --explicit > spec-file.txt`.
 
-To analyze a recording,
+### Preprocess a somatic recording
 
 **1. Analyze 2P data.**
 
@@ -36,3 +36,17 @@ This pipeline will:
 * measure the position of the arena's pillar in retinocentric and egocentric coordinates
 
 A single .h5 file will be written in the directory of the recording with all preprocessed data.
+
+### Preprocess an axonal recording
+
+**1. Denoise the 2P data.**
+
+There is noise in the tif stack which is likely from the resonance scanner. This is much worse in axonal than in somatic recordings, when the laser power is higher and the SNR is worse. A function from the `imgtools` repository [here](https://github.com/dylanmmartins/image-tools) is used to subtract the noise, which shows up as thick bands of onise (~50 pixels wide) that extend vertically to the top and bottom of the image. They sweep slowly both leftward and rightward, with changing overlap over time. TO suibtract this, run `python -m imgtools.resscan_denoise` and select the tif stack in the dialog box that opens. This code is memory intensive and needs to be run on a computer with >128 GB RAM. In addition to a readme with some details and a PDF of diagnostic figures, the code will write two tif files that should have the same
+
+**2. Analyze the 2P data.**
+
+Use the Goard lab two-photon calcium post processing pipeline repository [here](https://github.com/ucsb-goard-lab/Two-photon-calcium-post-processing), which I run with Matlab 2023b. Run the function `A_ProcessTimeSeries.m` without image registration. Then, run `B_DefineROI.m`, perform "Activity Map" segmentation with default values except for the "minimum pixel size" which should be changed to 5. Next, run `C_ExtractDFF.m` choosing "Local Neuropil Subtraction" and choosing "Yes" to "Weight subtraction to minimize signal-noise correlation?"
+
+**3. Create the config file.**
+
+Create a config file for which

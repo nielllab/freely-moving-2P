@@ -62,7 +62,10 @@ from .utils.filter import (
 
 from .utils.topcam import Topcam
 
-from .utils.twop import TwoP
+from .utils.twop import (
+    TwoP,
+    calc_dFF1
+)
 
 from .preprocess import preprocess
 

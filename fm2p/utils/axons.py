@@ -2,12 +2,15 @@
 import numpy as np
 from scipy import io
 import itertools
+import oasis
 
 import fm2p
 import imgtools
 
 
 def get_independent_axons(matpath, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False):
+
+    fps = 7.49
 
     mat = io.loadmat(matpath)
     dff_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='DFF')[0])
@@ -69,10 +72,9 @@ def get_independent_axons(matpath, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filt
     axon_correlates_with_globalF = np.where(gcc_vec > gcc_thresh)[0]
     usecells_gcc = [c for c in usecells if c not in axon_correlates_with_globalF]
 
-    print(len(usecells), usecells)
-    print(len(usecells_gcc), usecells_gcc)
-
     dFF_out = dFF.copy()[usecells_gcc, :]
 
-    return dFF_out, usecells
-    
+    denoised_dFF, sps = fm2p.calc_dFF1(dFF_out, fps=fps)
+
+    return dFF_out, denoised_dFF, sps, usecells
+

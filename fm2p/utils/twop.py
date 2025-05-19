@@ -148,3 +148,20 @@ class TwoP():
 
         return _savepath
 
+
+
+
+def calc_dFF1(dFF, neu_correction=0.7, fps=7.49):
+    # dFF should have shape: {cells, time}
+
+    nCells, lenT = np.shape(dFF)
+
+    denoised_dFF = np.zeros([nCells, lenT])
+    sps = np.zeros([nCells, lenT])
+
+    for c in range(nCells):
+
+        g = oasis.functions.estimate_time_constant(dFF[c,:].copy(), 1)
+        denoised_dFF[c,:], sps[c,:] = oasis.oasisAR1(dFF[c,:].copy(), g)
+
+    return denoised_dFF, sps

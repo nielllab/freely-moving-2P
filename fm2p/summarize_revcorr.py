@@ -66,9 +66,9 @@ def summarize_revcorr():
         _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
         splits_inds.append(_inds)
 
-    pupil_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
-    retino_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
-    ego_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
+    # pupil_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
+    # retino_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
+    # ego_xcorr = np.zeros([np.size(spikes, 0), len(lag_vals)]) * np.nan
 
     pupil_tunings = np.zeros([np.size(spikes, 0), len(lag_vals), len(pupil_bins)-1]) * np.nan
     ret_tunings = np.zeros([np.size(spikes, 0), len(lag_vals), len(retino_bins)-1]) * np.nan
@@ -170,8 +170,8 @@ def summarize_revcorr():
 
         for lag_ind, lag_val in enumerate(lag_vals):
             
-            for cell_i in range(np.size(spikes,0)):
-                spiketrains[cell_i,:] = np.roll(spikes[cell_i,:], shift=lag_val)[use]
+            # for cell_i in range(np.size(spikes,0)):
+            spiketrains[c_i,:] = np.roll(spikes[c_i,:], shift=lag_val)[use]
 
             pupil_cent, pupil_tuning, pupil_err = fm2p.tuning_curve(
                 spiketrains[c_i,:][np.newaxis,:],

@@ -63,6 +63,9 @@ def preprocess(cfg_path=None, spath=None):
     if num_recordings != num_specified_recordings:
         recording_names = [x for x in recording_names if x in cfg['include_recordings']]
 
+    if cfg['axons'] is True:
+        axons = True
+
     for rnum, rname in enumerate(recording_names):
 
         # Recording path
@@ -81,11 +84,16 @@ def preprocess(cfg_path=None, spath=None):
         possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False)
         topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
 
-        # Suite2p files
-        F_path = fm2p.find('F.npy', rpath, MR=True)
-        Fneu_path = fm2p.find('Fneu.npy', rpath, MR=True)
-        suite2p_spikes = fm2p.find('spks.npy', rpath, MR=True)
-        iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
+        if not axons:
+            # Suite2p files
+            F_path = fm2p.find('F.npy', rpath, MR=True)
+            Fneu_path = fm2p.find('Fneu.npy', rpath, MR=True)
+            suite2p_spikes = fm2p.find('spks.npy', rpath, MR=True)
+            iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
+
+        else:
+            F_axons_path = fm2p.find('*_denoised_SRA_data.mat', rpath, MR=True)
+
 
         if cfg['run_deinterlace']:
 
@@ -126,13 +134,17 @@ def preprocess(cfg_path=None, spath=None):
 
         print('  -> Reading fluorescence data.')
 
-        # Read suite2p data
-        F = np.load(F_path, allow_pickle=True)
-        Fneu = np.load(Fneu_path, allow_pickle=True)
-        spks = np.load(suite2p_spikes, allow_pickle=True)
-        # stat = np.load(suite2p_stat_path, allow_pickle=True)
-        # ops =  np.load(suite2p_ops_path, allow_pickle=True)
-        iscell = np.load(iscell_path, allow_pickle=True)
+        if not axons:
+            # Read suite2p data
+            F = np.load(F_path, allow_pickle=True)
+            Fneu = np.load(Fneu_path, allow_pickle=True)
+            spks = np.load(suite2p_spikes, allow_pickle=True)
+            # stat = np.load(suite2p_stat_path, allow_pickle=True)
+            # ops =  np.load(suite2p_ops_path, allow_pickle=True)
+            iscell = np.load(iscell_path, allow_pickle=True)
+
+        elif axons:
+            dFF_out, denoised_dFF, sps, usecells = fm2p.get_independent_axons(F_axons_path)
 
         # Create recording name
         # 250218_DMM_DMM038_rec_01_eyecam.avi
@@ -188,18 +200,36 @@ def preprocess(cfg_path=None, spath=None):
         print('  -> Running spike inference.')
 
         # Load processed two photon data from suite2p
-        twop_recording = fm2p.TwoP(rpath, full_rname, cfg=cfg)
-        twop_recording.add_data(
-            F=F,
-            Fneu=Fneu,
-            spikes=spks,
-            iscell=iscell
-        )
-        twop_dict = twop_recording.calc_dFF(neu_correction=0.7, oasis=False)
+        if not axons:
+            twop_recording = fm2p.TwoP(rpath, full_rname, cfg=cfg)
+            twop_recording.add_data(
+                F=F,
+                Fneu=Fneu,
+                spikes=spks,
+                iscell=iscell
+            )
+            twop_dict = twop_recording.calc_dFF(neu_correction=0.7, oasis=False)
 
-        twop_dt = 1./cfg['twop_rate']
-        twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
-        twop_dict['twopT'] = twopT
+            twop_dt = 1./cfg['twop_rate']
+            twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
+            twop_dict['twopT'] = twopT
+            twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
+
+        elif axons:
+            twop_dt = 1./cfg['twop_rate']
+            twopT = np.arange(0, np.size(sps, 1)*twop_dt, twop_dt)
+            twop_dict['twopT'] = twopT
+
+            twop_dict['raw_F0'] = np.zeros(np.size(dFF_out,0))
+            twop_dict['raw_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['norm_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['raw_Fneu'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['raw_dFF'] = dFF_out
+            twop_dict['norm_dFF'] = np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['denoised_dFF'] = denoised_dFF
+            twop_dict['s2p_spks'] = sps
+            twop_dict['matlab_cellinds'] = np.array(usecells)
+
 
         print('  -> Calculating retinocentric and egocentric orientations.')
 
@@ -232,7 +262,6 @@ def preprocess(cfg_path=None, spath=None):
                 twop_dict['raw_dFF'] = twop_dict['raw_dFF'][:-1]
                 twop_dict['norm_dFF'] = twop_dict['norm_dFF'][:-1]
                 twop_dict['denoised_dFF'] = twop_dict['denoised_dFF'][:-1]
-                # twop_dict['oasis_spks'] = twop_dict['oasis_spks'][:-1]
                 twop_dict['s2p_spks'] = twop_dict['s2p_spks'][:-1]
             _len_diff = np.size(learx) - np.size(twop_dict['s2p_spks'], 1)
 

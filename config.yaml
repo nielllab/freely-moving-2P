@@ -5,6 +5,7 @@ spath:
 # Recordings to analyze. These should exactly match the names of session subdirectories.
 # If this is left empty, all directories will be preprocessed.
 include_recordings: []
+axons: false
 
 # Preprocessing flags
 run_deinterlace : true
@@ -32,7 +33,7 @@ eye_trackable_N: 7
 eyecam_angular_offset: 90
 
 # Topcam tracking
-arena_width_cm: 22.
+arena_width_cm: 56. # was 22, but that was in inches, not cm
 running_thresh: 2.
 forward_thresh: 40.
 
