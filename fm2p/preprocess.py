@@ -216,6 +216,8 @@ def preprocess(cfg_path=None, spath=None):
             twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
 
         elif axons:
+            twop_dict = {}
+            
             twop_dt = 1./cfg['twop_rate']
             twopT = np.arange(0, np.size(sps, 1)*twop_dt, twop_dt)
             twop_dict['twopT'] = twopT
