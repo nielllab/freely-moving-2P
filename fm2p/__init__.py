@@ -96,7 +96,8 @@ from .utils.behavior import (
 )
 
 from .utils.alignment import (
-    align_eyecam_using_TTL
+    align_eyecam_using_TTL,
+    align_lightdark_using_TTL
 )
 
 from .utils.frame_annotation import (

@@ -288,19 +288,19 @@ def plot_allocentric_spikes(fig, ax, data, cellind, spikethresh='auto', circvar=
     cmap = plt.cm.hsv(np.linspace(0,1,360))
 
     if (type(spikethresh) == str) and (spikethresh=='auto'):
-        spikethresh = np.percentile(data['s2p_spks'][cellind,:], 70)
+        spikethresh = np.percentile(data['s2p_spks'][cellind,:], 95)
 
     if (fig is None) and (ax is None):
         fig, ax = plt.subplots(1,1, dpi=300)
 
     ax.axis('equal')
-    ax.plot(data['x'] / pxls2cm, data['y'] / pxls2cm, color='k', lw=1)
+    # ax.plot(data['x'] / pxls2cm, data['y'] / pxls2cm, color='k', lw=1)
     for i in range(len(data[circvar])):
         if (~np.isnan(data[circvar][i])) and (data['s2p_spks'][cellind,i]>spikethresh):
             ax.plot(data['x'][i] / pxls2cm, data['y'][i] / pxls2cm,
                 'o', ms=1, color=cmap[int(data[circvar][i])])
     ax.invert_yaxis()
-    ax.set_title('{:d} (thresh={:d})'.format(cellind, round(spikethresh)))
+    ax.set_title('cell {:d}'.format(cellind)) # (thresh={:d})'.format(cellind, round(spikethresh)))
 
     return fig
 

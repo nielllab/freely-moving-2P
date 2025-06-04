@@ -145,8 +145,16 @@ def preprocess(cfg_path=None, spath=None):
     if num_recordings != num_specified_recordings:
         recording_names = [x for x in recording_names if x in cfg['include_recordings']]
 
+
     if cfg['axons'] is True:
         axons = True
+    else:
+        axons = False
+    if cfg['ltdk'] is True:
+        ltdk = True
+    else:
+        ltdk = False
+    
 
     for rnum, rname in enumerate(recording_names):
 
@@ -162,6 +170,10 @@ def preprocess(cfg_path=None, spath=None):
         eyecam_TTL_timestamps = fm2p.find('*_ttlTS.csv', rpath, MR=True)
         eyecam_video_timestamps = fm2p.find('*_eyecam.csv', rpath, MR=True)
 
+        if ltdk:
+            ltdk_TTL_voltage = fm2p.find('*_ltdklogTTL.csv', rpath, MR=True)
+            ltdk_TTL_timestamps = fm2p.find('*_ltdkttlTS.csv', rpath, MR=True)
+
         # Topdown camera files
         possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False)
         topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
@@ -173,7 +185,7 @@ def preprocess(cfg_path=None, spath=None):
             suite2p_spikes = fm2p.find('spks.npy', rpath, MR=True)
             iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
 
-        else:
+        elif axons:
             F_axons_path = fm2p.find('*_denoised_SRA_data.mat', rpath, MR=True)
 
 
@@ -314,7 +326,6 @@ def preprocess(cfg_path=None, spath=None):
             twop_dict['s2p_spks'] = sps
             twop_dict['matlab_cellinds'] = np.array(usecells)
 
-
         print('  -> Calculating retinocentric and egocentric orientations.')
 
         # All values in units of pixels or degrees (not cm or rads)
@@ -374,6 +385,17 @@ def preprocess(cfg_path=None, spath=None):
             arena_dict
         )
 
+        if ltdk:
+            print('  -> Using TTL to calculate light/dark state vector')
+            ltdk_state_vec, light_onsets, dark_onsets = fm2p.align_lightdark_using_TTL(
+                ltdk_TTL_voltage,
+                ltdk_TTL_timestamps,
+                eyeT,
+                twopT,
+                eyeStart,
+                eyeEnd
+            )
+
         print('  -> Saving preprocessed dataset to file.')
 
         preprocessed_dict = {
@@ -392,6 +414,13 @@ def preprocess(cfg_path=None, spath=None):
         preprocessed_dict['phi_interp'] = phi_interp
         preprocessed_dict['head_x'] = headx
         preprocessed_dict['head_y'] = heady
+
+        preprocessed_dict['tldk'] = ltdk
+        if ltdk:
+            preprocessed_dict['ltdk_state_vec'] = ltdk_state_vec
+            preprocessed_dict['light_onsets'] = light_onsets
+            preprocessed_dict['dark_onsets'] = dark_onsets
+
 
         if len(cyclotorsion_dict.keys()) > 0:
             preprocessed_dict = {**preprocessed_dict, **cyclotorsion_dict}

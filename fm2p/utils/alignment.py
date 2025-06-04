@@ -90,3 +90,78 @@ def align_eyecam_using_TTL(eye_dlc_h5, eye_TS_csv, eye_TTLV_csv, eye_TTLTS_csv, 
 
     return eyeStart, eyeEnd
 
+
+
+def align_lightdark_using_TTL(ltdk_TTL_path, ltdk_TS_path, eyeT, twopT, eyeStart, eyeEnd):
+    # this needs to be the version of eyeT that is NOT already cropped to the
+    # start/end of the recording and NOT with T0 subtracted (still in
+    # absoluite time).
+
+    # lt/dk TTL
+    ltdkV = pd.read_csv(
+        ltdk_TTL_path,
+        encoding='utf-8',
+        engine='c',
+        header=None
+    ).squeeze().to_numpy()
+
+    ltdkT_series = pd.read_csv(
+        ltdk_TS_path,
+        encoding='utf-8',
+        engine='c',
+        header=None
+    ).squeeze()
+    ltdkT = fm2p.read_timestamp_series(ltdkT_series)
+
+    light_onsets = np.diff(ltdkV) > np.nanmean(ltdkV)
+    dark_onsets = np.diff(ltdkV) < -np.nanmean(ltdkV)
+
+    # find closest eyecam timestamp to TTL edge
+    eyet_light_onset_times = [fm2p.find_closest_timestamp(eyeT[eyeStart:eyeEnd], t)[1] for t in ltdkT[:-1][light_onsets]]
+    eyet_dark_onset_times = [fm2p.find_closest_timestamp(eyeT[eyeStart:eyeEnd], t)[1] for t in ltdkT[:-1][dark_onsets]]
+
+    # find the corresponding topdown
+    t0 = eyeT[eyeStart]
+    twopInds_light_onsets = np.array([fm2p.find_closest_timestamp(twopT, t-t0)[0] for t in eyet_light_onset_times])
+    twopInds_dark_onsets = np.array([fm2p.find_closest_timestamp(twopT, t-t0)[0] for t in eyet_dark_onset_times])
+
+    # true when lights are on, otherwise false
+    light_state_vec = np.zeros(len(twopT), dtype=bool)
+    for ind in range(len(twopT)):
+        
+        # last light onset that already happened
+        last_onset = twopInds_light_onsets[twopInds_light_onsets<ind]
+        last_offset = twopInds_dark_onsets[twopInds_dark_onsets<ind]
+
+        # if there has been both a rising and falling edge already
+        if (len(last_offset)>0) and (len(last_onset)>0):
+            last_onset = last_onset[-1]
+            last_offset = last_offset[-1]
+            # most recent change was lights turning on
+            if last_onset > last_offset:
+                light_state_vec[ind] = True
+            # or, most recent change was lights turning off
+            elif last_onset < last_offset:
+                light_state_vec[ind] = False
+
+        # if there has been a falling edge but no rising edge yet
+        elif (len(last_onset)==0) and (len(last_offset)>0):
+            light_state_vec[ind] = False
+
+        # there has been a rising edge but no falling edge yet
+        elif (len(last_onset)>0) and (len(last_offset)==0):
+            light_state_vec[ind] = True
+
+        # There has been on rising or falling edge yet. In this case, check
+        # to see which will come next.
+        elif (len(last_onset)==0) and (len(last_offset)==0):
+            if twopInds_light_onsets[0] < twopInds_dark_onsets[0]:
+                light_state_vec[ind] = True
+            elif twopInds_light_onsets[0] > twopInds_dark_onsets[0]:
+                light_state_vec[ind] = False
+
+    return light_state_vec, twopInds_light_onsets, twopInds_dark_onsets
+
+
+
+

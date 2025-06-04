@@ -6,6 +6,7 @@ spath: ''
 # If this is left empty, all directories will be preprocessed.
 include_recordings: []
 axons: false
+ltdk: false
 
 # Preprocessing flags
 run_deinterlace : true
