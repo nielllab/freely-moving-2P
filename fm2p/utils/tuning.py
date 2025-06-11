@@ -261,3 +261,45 @@ def calc_tuning_reliability(spikes, behavior, bins, ncnk=10):
 
     return p_value, cc
 
+
+def norm_tuning(tuning):
+
+    tuning = tuning - np.nanmean(tuning)
+    tuning = tuning / np.std(tuning)
+    
+    return tuning
+
+
+def plot_running_median(ax, x, y, n_bins=7):
+    """ Plot median of a dataset along a set of horizontal bins.
+    
+    """
+
+    bins = np.linspace(np.min(x), np.max(x), n_bins)
+
+    bin_means, bin_edges, bin_number = scipy.stats.binned_statistic(
+        x[~np.isnan(x) & ~np.isnan(y)],
+        y[~np.isnan(x) & ~np.isnan(y)],
+        statistic=np.median,
+        bins=bins)
+    
+    bin_std, _, _ = scipy.stats.binned_statistic(
+        x[~np.isnan(x) & ~np.isnan(y)],
+        y[~np.isnan(x) & ~np.isnan(y)],
+        statistic=np.nanstd,
+        bins=bins)
+    
+    hist, _ = np.histogram(
+        x[~np.isnan(x) & ~np.isnan(y)],
+        bins=bins)
+    
+    tuning_err = bin_std / np.sqrt(hist)
+
+    ax.plot(bin_edges[:-1] + (np.median(np.diff(bins))/2),
+               bin_means,
+               '-', color='k')
+    
+    ax.fill_between(bin_edges[:-1] + (np.median(np.diff(bins))/2),
+                       bin_means-tuning_err,
+                       bin_means+tuning_err,
+                       color='k', alpha=0.2)

@@ -163,7 +163,9 @@ from .utils.tuning import (
     tuning_curve,
     plot_tuning,
     calc_modind,
-    calc_tuning_reliability
+    calc_tuning_reliability,
+    norm_tuning,
+    plot_running_median
 )
 
 from .mapRF import mapRF
