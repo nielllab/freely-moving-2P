@@ -55,7 +55,7 @@ class Topcam():
         self.cfg = cfg
 
         # Overwrite threshold until a better topdown DLC network is trained
-        self.cfg['likelihood_thresh'] = 0.5
+        # self.cfg['likelihood_thresh'] = 0.9
 
 
     def find_files(self):
