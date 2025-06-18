@@ -173,6 +173,7 @@ from .utils.tuning import (
 
 from .mapRF import mapRF
 from .summarize_revcorr import summarize_revcorr
+from .summarize_revcorr_ltdk import summarize_revcorr_ltdk
 
 from .utils.axons import (
     get_independent_axons

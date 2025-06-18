@@ -36,7 +36,7 @@ def summarize_revcorr():
     wilcoxon_thresh = 0.05
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--preproc', type=str, default=None)
+    parser.add_argument('-p', '--preproc', type=str, default=None)
     parser.add_argument('-v', '--version', type=str, default='00')
     args = parser.parse_args()
 
@@ -62,11 +62,15 @@ def summarize_revcorr():
     speed = np.append(speed, speed[-1])
     use = speed > 1.5
 
-    ego_bins = np.linspace(-180, 180, 19)
-    retino_bins = np.linspace(-180, 180, 19) # 20 deg bins
-    pupil_bins = np.linspace(45, 95, 11) # 5 deg bins
+    # ego_bins = np.linspace(-180, 180, 19)
+    # retino_bins = np.linspace(-180, 180, 19) # 20 deg bins
+    # pupil_bins = np.linspace(45, 95, 11) # 5 deg bins
 
-    lag_vals = [-3,-2,-1,0,1,2,3,4,5]
+    pupil_bins = np.linspace(45, 110, 21) # 3.25 deg bins (was 5 deg)
+    retino_bins = np.linspace(-180, 180, 37) # 10. deg bins (was 20)
+    ego_bins = np.linspace(-180, 180, 37)
+
+    lag_vals = [-3,-2,-1,0,1,2,3,4,20]
 
     spiketrains = np.zeros([
         np.size(spikes,0),
@@ -87,9 +91,24 @@ def summarize_revcorr():
         _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
         splits_inds.append(_inds)
 
-    pupil_tunings = np.zeros([np.size(spikes, 0), len(lag_vals), len(pupil_bins)-1]) * np.nan
-    ret_tunings = np.zeros([np.size(spikes, 0), len(lag_vals), len(retino_bins)-1]) * np.nan
-    ego_tunings = np.zeros([np.size(spikes, 0), len(lag_vals), len(ego_bins)-1]) * np.nan
+    pupil_tunings = np.zeros([
+        np.size(spikes, 0),
+        len(lag_vals),
+        len(pupil_bins)-1,
+        2                       # {tuning, error}
+    ]) * np.nan
+    ret_tunings = np.zeros([
+        np.size(spikes, 0),
+        len(lag_vals),
+        len(retino_bins)-1,
+        2
+    ]) * np.nan
+    ego_tunings = np.zeros([
+        np.size(spikes, 0),
+        len(lag_vals),
+        len(ego_bins)-1,
+        2
+    ]) * np.nan
 
     # axis 2: pupil, retino, ego
     # axis 3: modulation index, peak value
@@ -173,9 +192,11 @@ def summarize_revcorr():
     pdf.savefig(fig)
     plt.close()
 
-    # axis 1: {pupil, retino, ego}
-    # axis 3: {p value, correlation}
-    cell_pvals = np.zeros([np.size(spikes, 0), 3, len(lag_vals), 2]) * np.nan
+    cell_corrvals = np.zeros([
+        np.size(spikes, 0),
+        3,                      # {pupil, retino, ego}
+        len(lag_vals)
+    ]) * np.nan
 
 
     ### SUMMARIZE TUNING OF INDIVIDUAL CELLS
@@ -206,27 +227,24 @@ def summarize_revcorr():
                 ego_bins
             )
 
-            pupil_pval_, pupil_cc = fm2p.calc_tuning_reliability(
+            pupil_cc = fm2p.calc_tuning_reliability(
                 spiketrains[c_i, :][np.newaxis,:],
                 pupil[use],
                 pupil_bins,
             )
-            retino_pval_, retino_cc = fm2p.calc_tuning_reliability(
+            retino_cc = fm2p.calc_tuning_reliability(
                 spiketrains[c_i, :][np.newaxis,:],
                 retinocentric[use],
                 retino_bins,
             )
-            ego_pval_, ego_cc = fm2p.calc_tuning_reliability(
+            ego_cc = fm2p.calc_tuning_reliability(
                 spiketrains[c_i, :][np.newaxis,:],
                 egocentric[use],
                 ego_bins,
             )
-            cell_pvals[c_i, 0, lag_ind, 0] = pupil_pval_
-            cell_pvals[c_i, 1, lag_ind, 0] = retino_pval_
-            cell_pvals[c_i, 2, lag_ind, 0] = ego_pval_
-            cell_pvals[c_i, 0, lag_ind, 1] = pupil_cc
-            cell_pvals[c_i, 1, lag_ind, 1] = retino_cc
-            cell_pvals[c_i, 2, lag_ind, 1] = ego_cc
+            cell_corrvals[c_i, 0, lag_ind] = pupil_cc
+            cell_corrvals[c_i, 1, lag_ind] = retino_cc
+            cell_corrvals[c_i, 2, lag_ind] = ego_cc
 
             fm2p.plot_tuning(axs[0,lag_ind], pupil_cent, pupil_tuning, pupil_err, 'tab:blue', False)
             fm2p.plot_tuning(axs[1,lag_ind], ret_cent, ret_tuning, ret_err, 'tab:orange', False)
@@ -236,21 +254,21 @@ def summarize_revcorr():
 
             Pmod, Ppeak = fm2p.calc_modind(pupil_cent, pupil_tuning, spiketrains[c_i,:])
             if np.isnan(Ppeak):
-                axs[0,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3}'.format(pupil_pval_, lag_str, Pmod))
+                axs[0,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3}'.format(lag_str, pupil_cc, Pmod))
             else:
-                axs[0,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(pupil_pval_, lag_str, Pmod, Ppeak))
+                axs[0,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(lag_str, pupil_cc, Pmod, Ppeak))
             
             Rmod, Rpeak = fm2p.calc_modind(ret_cent, ret_tuning, spiketrains[c_i,:])
             if np.isnan(Rpeak):
-                axs[1,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3}'.format(retino_pval_, lag_str, Rmod))
+                axs[1,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3}'.format(lag_str, retino_cc, Rmod))
             else:
-                axs[1,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(retino_pval_, lag_str, Rmod, Rpeak))
+                axs[1,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(lag_str, retino_cc, Rmod, Rpeak))
             
             Emod, Epeak = fm2p.calc_modind(ego_cent, ego_tuning, spiketrains[c_i,:])
             if np.isnan(Epeak):
-                axs[2,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3}'.format(ego_pval_, lag_str, Emod))
+                axs[2,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3}'.format(lag_str, ego_cc, Emod))
             else:
-                axs[2,lag_ind].set_title('{:.4}ms\np={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(ego_pval_, lag_str, Emod, Epeak))
+                axs[2,lag_ind].set_title('{:.4}ms\nc={:.5}\nmod={:.3} peak={:.4}\N{DEGREE SIGN}'.format(lag_str, ego_cc, Emod, Epeak))
 
             all_mods[c_i, lag_ind, 0, :] = Pmod, Ppeak
             all_mods[c_i, lag_ind, 1, :] = Rmod, Rpeak
@@ -268,10 +286,15 @@ def summarize_revcorr():
                     _maxtuning = x
 
             axs[1,lag_ind].vlines([-75,75], 0, _maxtuning, color='k', alpha=0.3, ls='--', lw=1)
+            
+            pupil_tunings[c_i, lag_ind, :, 0] = pupil_tuning
+            pupil_tunings[c_i, lag_ind, :, 1] = pupil_err
 
-            pupil_tunings[c_i, lag_ind, :] = pupil_tuning
-            ret_tunings[c_i, lag_ind, :] = ret_tuning
-            ego_tunings[c_i, lag_ind, :] = ego_tuning
+            ret_tunings[c_i, lag_ind, :, 0] = ret_tuning
+            ret_tunings[c_i, lag_ind, :, 1] = ret_err
+
+            ego_tunings[c_i, lag_ind, :, 0] = ego_tuning
+            ego_tunings[c_i, lag_ind, :, 1] = ego_err
 
         axs = axs.flatten()
         for ax in axs:
@@ -284,33 +307,34 @@ def summarize_revcorr():
         pdf.savefig(fig)
         plt.close()
 
-    np.save(os.path.join(savepath, 'cell_p_and_cc_values.npy'), cell_pvals)
+    np.save(os.path.join(savepath, 'cell_corr_values.npy'), cell_corrvals)
     np.save(os.path.join(savepath, 'pupil_tunings.npy'), pupil_tunings)
     np.save(os.path.join(savepath, 'ret_tunings.npy'), ret_tunings)
     np.save(os.path.join(savepath, 'ego_tunings.npy'), ego_tunings)
+    np.save(os.path.join(savepath, 'all_modinds.npy'), all_mods)
 
-    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
-    axs = axs.flatten()
-    for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,0,lag_ind,0], color='k', bins=np.linspace(0,1,100))
-        axs[lag_ind].set_xlabel('p value')
-        axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
-        axs[lag_ind].set_xlim([0,0.2])
-        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
-        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
-    fig.suptitle('pupil')
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close()
+    # fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
+    # axs = axs.flatten()
+    # for lag_ind, lag_val in enumerate(lag_vals):
+    #     hist = axs[lag_ind].hist(cell_pvals[:,0,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+    #     axs[lag_ind].set_xlabel('p value')
+    #     axs[lag_ind].set_ylabel('cells')
+    #     axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+    #     axs[lag_ind].set_xlim([0,0.2])
+    #     axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+    #     axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    # fig.suptitle('pupil')
+    # fig.tight_layout()
+    # pdf.savefig(fig)
+    # plt.close()
 
     fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
     axs = axs.flatten()
     for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,0,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
-        axs[lag_ind].set_xlabel('cc')
+        hist = axs[lag_ind].hist(cell_corrvals[:,0,lag_ind], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('corr.')
         axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,0,lag_ind,1]>0.5)))
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_corrvals[:,0,lag_ind]>0.5)))
         axs[lag_ind].set_xlim([-1,1])
         axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
         axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
@@ -319,28 +343,28 @@ def summarize_revcorr():
     pdf.savefig(fig)
     plt.close()
 
-    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
-    axs = axs.flatten()
-    for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,1,lag_ind,0], color='k', bins=np.linspace(0,1,100))
-        axs[lag_ind].set_xlabel('p value')
-        axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
-        axs[lag_ind].set_xlim([0,0.2])
-        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
-        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
-    fig.suptitle('retinocentric')
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close()
+    # fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
+    # axs = axs.flatten()
+    # for lag_ind, lag_val in enumerate(lag_vals):
+    #     hist = axs[lag_ind].hist(cell_pvals[:,1,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+    #     axs[lag_ind].set_xlabel('p value')
+    #     axs[lag_ind].set_ylabel('cells')
+    #     axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+    #     axs[lag_ind].set_xlim([0,0.2])
+    #     axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+    #     axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    # fig.suptitle('retinocentric')
+    # fig.tight_layout()
+    # pdf.savefig(fig)
+    # plt.close()
 
     fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
     axs = axs.flatten()
     for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,1,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
-        axs[lag_ind].set_xlabel('cc')
+        hist = axs[lag_ind].hist(cell_corrvals[:,1,lag_ind], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('corr.')
         axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,1,lag_ind,1]>0.5)))
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_corrvals[:,1,lag_ind]>0.5)))
         axs[lag_ind].set_xlim([-1,1])
         axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
         axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
@@ -349,28 +373,28 @@ def summarize_revcorr():
     pdf.savefig(fig)
     plt.close()
 
-    fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
-    axs = axs.flatten()
-    for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,2,lag_ind,0], color='k', bins=np.linspace(0,1,100))
-        axs[lag_ind].set_xlabel('p value')
-        axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
-        axs[lag_ind].set_xlim([0,0.2])
-        axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
-        axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
-    fig.suptitle('egocentric')
-    fig.tight_layout()
-    pdf.savefig(fig)
-    plt.close()
+    # fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
+    # axs = axs.flatten()
+    # for lag_ind, lag_val in enumerate(lag_vals):
+    #     hist = axs[lag_ind].hist(cell_pvals[:,2,lag_ind,0], color='k', bins=np.linspace(0,1,100))
+    #     axs[lag_ind].set_xlabel('p value')
+    #     axs[lag_ind].set_ylabel('cells')
+    #     axs[lag_ind].set_title('lag = {} msec'.format(int(np.round((lag_val*(1/7.5))*1000,0))))
+    #     axs[lag_ind].set_xlim([0,0.2])
+    #     axs[lag_ind].vlines(0.05, 0, 40, ls='--', color='tab:red', lw=0.5)
+    #     axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
+    # fig.suptitle('egocentric')
+    # fig.tight_layout()
+    # pdf.savefig(fig)
+    # plt.close()
 
     fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4.25))
     axs = axs.flatten()
     for lag_ind, lag_val in enumerate(lag_vals):
-        hist = axs[lag_ind].hist(cell_pvals[:,2,lag_ind,1], color='k', bins=np.linspace(-1,1,33))
-        axs[lag_ind].set_xlabel('cc')
+        hist = axs[lag_ind].hist(cell_corrvals[:,2,lag_ind], color='k', bins=np.linspace(-1,1,33))
+        axs[lag_ind].set_xlabel('corr.')
         axs[lag_ind].set_ylabel('cells')
-        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_pvals[:,2,lag_ind,1]>0.5)))
+        axs[lag_ind].set_title('lag = {} msec\n{}>0.5'.format(int(np.round((lag_val*(1/7.5))*1000,0)),np.sum(cell_corrvals[:,2,lag_ind]>0.5)))
         axs[lag_ind].set_xlim([-1,1])
         axs[lag_ind].vlines(0.5, 0, 40, ls='--', color='tab:red', lw=0.5)
         axs[lag_ind].set_ylim([0, np.max(hist[0])*1.1])
@@ -383,18 +407,18 @@ def summarize_revcorr():
     ax.vlines(0,0,65,lw=1,ls='--',color='k')
     ax.plot(
         [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
-        [np.sum(cell_pvals[:,0,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        [np.sum(cell_corrvals[:,0,lag_ind]>0.5) for lag_ind,_ in enumerate(lag_vals)],
         lw=2, color='tab:blue', label='pupil'
     )
 
     ax.plot(
         [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
-        [np.sum(cell_pvals[:,1,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        [np.sum(cell_corrvals[:,1,lag_ind]>0.5) for lag_ind,_ in enumerate(lag_vals)],
         lw=2, color='tab:orange', label='retino'
     )
     ax.plot(
         [int(np.round((lag_val*(1/7.5))*1000,0)) for lag_val in lag_vals],
-        [np.sum(cell_pvals[:,2,lag_ind,1]>0.5) for lag_ind,_ in enumerate(lag_vals)],
+        [np.sum(cell_corrvals[:,2,lag_ind]>0.5) for lag_ind,_ in enumerate(lag_vals)],
         lw=2, color='tab:green', label='ego'
     )
     ax.set_ylim([0,65])

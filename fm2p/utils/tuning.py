@@ -21,7 +21,9 @@ Author: DMM, last modified May 2025
 
 import numpy as np
 import scipy.stats
-from scipy.stats import pearsonr
+# from scipy.stats import pearson
+
+import fm2p
 
 
 def tuning_curve(sps, x, x_range):
@@ -255,11 +257,11 @@ def calc_tuning_reliability(spikes, behavior, bins, ncnk=10):
         behavior[split2_inds],
         bins)
     
-    pearson_result = pearsonr(tuning1.flatten(), tuning2.flatten())
-    cc = pearson_result.statistic
-    p_value = pearson_result.pvalue
+    # Calculate the correlation coefficient (this custom func is
+    # more efficient than scipy but does not calculate the p value)
+    pearson_result = fm2p.corr2_coeff(tuning1, tuning2)
 
-    return p_value, cc
+    return pearson_result
 
 
 def norm_tuning(tuning):
