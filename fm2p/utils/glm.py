@@ -8,12 +8,10 @@ fit_GLM()
     Fit a GLM for a 1D value of y (i.e., single cell).
 
 
-Example usage
--------------
-    $ python -m fm2p.summarize_revcorr -v 01
-or alternatively, leave out the -v flag and select the h5 file from a file dialog box, followed
-by the version number in a text box.
-    $ python -m fm2p.summarize_revcorr
+
+TODO: At some point, modify the GLM so that multiple frames (in perserved
+presered temporal sequence) can be used to predict a single frame's firing
+rate.
 
 Author: DMM, 2025
 """
@@ -23,7 +21,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-def fit_GLM(X, y, usebias=True):
+def fit_closed_GLM(X, y, usebias=True):
     """ Fit a GLM for a 1D value of y (i.e., single cell).
     
     """
@@ -41,7 +39,7 @@ def fit_GLM(X, y, usebias=True):
         X_aug = np.hstack([np.ones((n_samples, 1)), X])
     elif not usebias:
         X_aug = X
-    
+
     # Closed-form solution: w = (X^T X)^(-1) X^T y
     XtX = X_aug.T @ X_aug
     Xty = X_aug.T @ y
@@ -72,11 +70,82 @@ def compute_y_hat(X, y, w):
 
 
 
-def fit_pred_GLM(spikes, pupil, retino, ego, speed):
+class GLM:
+    def __init__(self, learning_rate=0.001, epochs=5000, l1_penalty=0.01, l2_penalty=0.01):
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.l1_penalty = l1_penalty
+        self.l2_penalty = l2_penalty
+        self.weights = np.zeros(4) # 3 parameters and a bias term
+
+    def _sigmoid(self, z):
+        return 1 / (1 + np.exp(-z))
+
+    def _loss(self, y_true, y_pred):
+        m = len(y_true)
+        log_loss = -np.mean(y_true * np.log(y_pred + 1e-15) + (1 - y_true) * np.log(1 - y_pred + 1e-15))
+        l1 = self.l1_penalty * np.sum(np.abs(self.weights[1:]))
+        l2 = self.l2_penalty * np.sum(self.weights[1:] ** 2)
+        return log_loss + l1 + l2
+
+    def fit(self, X, y):
+        if X.shape[1] != 3:
+            raise ValueError("Input X must have exactly 3 features for this GLM.")
+        X_bias = np.c_[np.ones(X.shape[0]), X]  # Add bias term
+        m = len(y)
+
+        for epoch in range(self.epochs):
+            z = np.dot(X_bias, self.weights)
+            y_pred = self._sigmoid(z)
+
+            gradient = np.dot(X_bias.T, (y_pred - y)) / m
+            # Apply L2 regularization (ridge)
+            gradient[1:] += self.l2_penalty * 2 * self.weights[1:]
+            # Apply L1 regularization (lasso) - subgradient method
+            gradient[1:] += self.l1_penalty * np.sign(self.weights[1:])
+
+            self.weights -= self.learning_rate * gradient
+
+    def predict(self, X):
+        if X.shape[1] != 3:
+            raise ValueError("Input X must have exactly 3 features for this GLM.")
+        X_bias = np.c_[np.ones(X.shape[0]), X]
+        y_hat = self._sigmoid(np.dot(X_bias, self.weights))
+        return y_hat
+    
+    def predict_and_score(self, X, y):
+        # should be X_test and y_test as inputs
+        y_hat = self.predict(X)
+        mse = np.mean((y - y_hat)**2)
+        return y_hat, mse
+
+    # def predict(self, X, threshold=0.5):
+    #     return (self.predict_proba(X) >= threshold).astype(int)
+
+    def get_weights(self):
+        return self.weights
+
+
+
+def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     # spikes for a whole dataset of neurons, shape = {#frames, #cells}
+
+
+    if opts is None:
+        learning_rate = 0.001
+        epochs = 5000
+        l1_penalty = 0.01
+        l2_penalty = 0.01
+    elif opts is not None:
+        learning_rate = opts['learning_rate']
+        epochs = opts['epochs']
+        l1_penalty = opts['l1_penalty']
+        l2_penalty = opts['l2_penalty']
+
 
     # First, threshold all inputs by the animal's speed, i.e., drop
     # frames in which the animal is stationary
+    speed = np.append(speed, speed[-1])
     use = speed > 1.5 # cm/sec
 
     spikes = spikes[use,:]
@@ -87,7 +156,6 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed):
     nFrames, nCells = np.shape(spikes)
     X_shared = np.stack([pupil, retino, ego], axis=1)
 
-
     # Drop any frame for which one of the behavioral varaibles was NaN
     # At the end, need to compute y_hat and then add NaN indices back in so that temporal
     # structure of the origional recording is preseved.
@@ -95,14 +163,13 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed):
     X_shared_ = X_shared.copy()[_keepFmask,:]
     spikes_ = spikes.copy()[_keepFmask,:]
 
-
     # Make train/test split by splitting frames into 20 chunks,
     # shuffling the order of those chunks, and then grouping them
     # into two groups at a 75/25 ratio. Same timepoint split will
     # be used across all cells.
     ncnk = 20
     traintest_frac = 0.75
-    _len = np.sum(use)
+    _len = np.sum(_keepFmask)
     cnk_sz = _len // ncnk
     _all_inds = np.arange(0,_len)
     chunk_order = np.arange(ncnk)
@@ -117,13 +184,13 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed):
             train_inds.extend(_inds)
         elif cnk_i >= train_test_boundary:
             test_inds.extend(_inds)
-    train_inds = np.sort(np.array(train_inds))
-    test_inds = np.sort(np.array(test_inds))
+    train_inds = np.sort(np.array(train_inds)).astype(int)
+    test_inds = np.sort(np.array(test_inds)).astype(int)
 
     # GLM weights for all cells
     w = np.zeros([
         nCells,
-        np.size(X_shared)+1     # number of features + a bias term
+        np.size(X_shared_,1)+1     # number of features + a bias term
     ]) * np.nan
     # Predicted spike rate for the test data
     y_hat = np.zeros([
@@ -133,18 +200,27 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed):
     # Mean-squared error for each cell
     mse = np.zeros(nCells) * np.nan
 
+    X_train = X_shared_[train_inds, :].copy()
+    X_test = X_shared_[test_inds, :].copy()
+
 
     for cell in tqdm(range(nCells)):
-
-        X_train_c = X_shared_[train_inds, cell].copy()
-        X_test_c = X_shared_[test_inds, cell].copy()
 
         y_train_c = spikes_[train_inds, cell].copy()
         y_test_c = spikes_[test_inds, cell].copy()
 
-        w_c = fit_GLM(X_train_c, y_train_c)
+        cell_model = GLM(
+            learning_rate=learning_rate,
+            epochs=epochs,
+            l1_penalty=l1_penalty,
+            l2_penalty=l2_penalty
+        )
 
-        y_hat_c, mse_c = compute_y_hat(X_test_c, y_test_c, w_c)
+        cell_model.fit(X_train, y_train_c)
+
+        y_hat_c, mse_c = cell_model.predict_and_score(X_test, y_test_c)
+
+        w_c = cell_model.get_weights()
 
         w[cell,:] = w_c.copy()
         y_hat[cell,:] = y_hat_c.copy()

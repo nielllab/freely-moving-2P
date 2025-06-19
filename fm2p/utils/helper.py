@@ -14,10 +14,11 @@ str_to_bool(value)
 Author: DMM, 2024
 """
 
-
+import os
 import pandas as pd
 import numpy as np
 
+import fm2p
 
 def split_xyl(xyl):
     """ Split the xyl dataframe into x, y, and likelihood dataframes.
@@ -115,3 +116,9 @@ def str_to_bool(value):
     
     raise ValueError(f'{value} is not a valid boolean value')
 
+
+def make_default_cfg():
+    internals_config_path = os.path.join(fm2p.up_dir(__file__, 1), 'internals.yaml')
+    cfg = fm2p.read_yaml(internals_config_path)
+
+    return cfg

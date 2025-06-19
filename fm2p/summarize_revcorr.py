@@ -77,18 +77,18 @@ def summarize_revcorr():
         np.sum(use)
     ]) * np.nan
     
-    # break data into 10 chunks, randomly choose ten of them for each block
-    ncnk = 10
-    _len = np.sum(use)
-    cnk_sz = _len // ncnk
-    _all_inds = np.arange(0,_len)
-    chunk_order = np.arange(ncnk)
-    np.random.shuffle(chunk_order)
+    # break data into 10 chunks, randomly choose 5 of them for each block
+    # ncnk = 10
+    # _len = np.sum(use)
+    # cnk_sz = _len // ncnk
+    # _all_inds = np.arange(0,_len)
+    # chunk_order = np.arange(ncnk)
+    # np.random.shuffle(chunk_order)
 
-    splits_inds = []
-    for cnk in chunk_order:
-        _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
-        splits_inds.append(_inds)
+    # splits_inds = []
+    # for cnk in chunk_order:
+    #     _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+    #     splits_inds.append(_inds)
 
     pupil_tunings = np.zeros([
         np.size(spikes, 0),

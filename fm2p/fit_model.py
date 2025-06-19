@@ -24,12 +24,14 @@ import numpy as np
 import fm2p
 
 
-def fit_simple_GLM(cfg):
+def fit_simple_GLM(cfg, opts):
 
     print('  -> Analyzing data for config file: {}'.format(cfg['spath']))
     print('  -> Using Model 2 (simple GLM)')
 
     reclist = cfg['include_recordings']
+
+    all_glm_fit_results = []
 
     for rname in reclist:
 
@@ -42,14 +44,17 @@ def fit_simple_GLM(cfg):
         retinocentric = data['retinocentric'].copy()
         egocentric = data['egocentric'].copy()
         speed = data['speed'].copy()
-        spikes = data['s2p_spks'].copy()
+        spikes = data['s2p_spks'].copy().T
 
-        glm_fit_results = fm2p.fit_pred_GLM(spikes, pupil, retinocentric, egocentric, speed)
+        glm_fit_results = fm2p.fit_pred_GLM(spikes, pupil, retinocentric, egocentric, speed, opts=opts)
 
         savepath = os.path.join(rec_dir, 'GLM_fit_results.h5')
         print('Saving GLM results to {}'.format(savepath))
         fm2p.write_h5(savepath, glm_fit_results)
 
+        all_glm_fit_results.append(glm_fit_results)
+
+    return all_glm_fit_results
 
 
 def fit_LNLP(cfg):
@@ -62,6 +67,9 @@ def fit_LNLP(cfg):
     cfgh : dict
         Config dictionary.
     """
+
+    if cfg is None:
+        cfg = fm2p.make_default_cfg()
 
     print('  -> Analyzing data for config file: {}'.format(cfg['spath']))
     print('  -> Using Model 1 (Hardcastle LNLP)')
@@ -184,11 +192,10 @@ def fit_LNLP(cfg):
 
 def fit_model():
 
-    if cfg_path is None:
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-cfg', '--cfg', type=str, default=None)
-        parser.add_argument('-v', '--model_version', type=int, default=None)
-        args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-cfg', '--cfg', type=str, default=None)
+    parser.add_argument('-v', '--model_version', type=int, default=None)
+    args = parser.parse_args()
 
     if args.cfg is None:
         print('Select config yaml file.')

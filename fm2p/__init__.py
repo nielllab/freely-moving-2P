@@ -6,7 +6,8 @@ DMM, 2024
 from .utils.helper import (
     split_xyl,
     apply_liklihood_thresh,
-    str_to_bool
+    str_to_bool,
+    make_default_cfg
 )
 
 from .utils.linalg import (
@@ -184,8 +185,9 @@ from .utils.axons import (
 )
 
 from .utils.glm import (
-    fit_GLM,
+    fit_closed_GLM,
     compute_y_hat,
+    GLM,
     fit_pred_GLM
 )
 
