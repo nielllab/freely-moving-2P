@@ -33,7 +33,8 @@ from .utils.time import (
     str2time,
     time2float,
     interpT,
-    find_closest_timestamp
+    find_closest_timestamp,
+    fmt_now
 )
 
 from .utils.cameras import (

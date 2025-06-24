@@ -124,6 +124,14 @@ def preprocess(cfg_path=None, spath=None):
     elif (cfg_path is not None):
         cfg = fm2p.read_yaml(cfg_path)
 
+    
+    # Switch to alternative preprocessing if config indicates that
+    # this is a hippocampal plug recording.
+    if cfg['hp_plug']:
+        fm2p.hippocampal_preprocess(cfg_path)
+        return
+    
+
     # Find the number of recordings in the session
     # Every folder in the session directory is assumed to be a recording
     recording_names = fm2p.list_subdirs(cfg['spath'], givepath=False)
@@ -418,6 +426,7 @@ def preprocess(cfg_path=None, spath=None):
 
         preprocessed_dict['ltdk'] = ltdk # was 'tldk', will need to build in a flag to make sure
         # the one that was used in existing preprocessing files is found.
+
         if ltdk:
             preprocessed_dict['ltdk_state_vec'] = ltdk_state_vec
             preprocessed_dict['light_onsets'] = light_onsets
