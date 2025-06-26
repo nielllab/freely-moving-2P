@@ -24,7 +24,7 @@ import numpy as np
 import fm2p
 
 
-def fit_simple_GLM(cfg, opts):
+def fit_simple_GLM(cfg, opts, inds=None):
 
     print('  -> Analyzing data for config file: {}'.format(cfg['spath']))
     print('  -> Using Model 2 (simple GLM)')
@@ -44,7 +44,17 @@ def fit_simple_GLM(cfg, opts):
         retinocentric = data['retinocentric'].copy()
         egocentric = data['egocentric'].copy()
         speed = data['speed'].copy()
-        spikes = data['s2p_spks'].copy().T
+        spikes = data['norm_spikes'].copy().T
+
+        if inds is not None:
+
+            if len(inds) != np.size(spikes,1):
+                inds_ = np.zeros(np.size(spikes,1))
+                inds_[inds] = 1
+                inds = inds_.copy().astype(bool)
+
+            spikes = spikes[:,inds]
+            
 
         glm_fit_results = fm2p.fit_pred_GLM(spikes, pupil, retinocentric, egocentric, speed, opts=opts)
 

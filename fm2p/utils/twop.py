@@ -61,6 +61,7 @@ class TwoP():
         self.dt = 1. / cfg['twop_rate']
 
         self.dFF = None
+        self.nCells = None
 
     def find_files(self):
         """ Find the files in the recording directory.
@@ -134,6 +135,7 @@ class TwoP():
         self.F = F[usecells, :]
         self.Fneu = Fneu[usecells, :]
         self.s2p_spks = spikes[usecells, :]
+        self.nCells = np.size(self.F, 0)
 
 
     def calc_dFF(self, neu_correction=0.7, oasis=True):
@@ -224,6 +226,7 @@ class TwoP():
 
         self.dFF = norm_dFF
         self.spikes = self.s2p_spks
+        self.nCells = nCells
 
         return twop_dict
 
@@ -256,11 +259,10 @@ class TwoP():
         assert self.dFF is not None, "dFF must be calculated before calling this method."
 
         dFF = self.dFF.copy()
-        nCells = np.shape(dFF, 0)
 
         dFF_transients = np.zeros_like(dFF)
         
-        for c in range(nCells):
+        for c in range(self.nCells):
             sd = np.std(dFF[c,:])
             baseline_times = np.where(dFF[c,:] < (sd * sd_thresh))[0]
             mean_baseline = np.mean(dFF[c, baseline_times])
@@ -276,6 +278,8 @@ class TwoP():
         # set a maximum spike rate for each cell
         # then, normalize
 
+        sd_thresh = self.cfg['cell_sd_thresh']
+
         assert self.nCells > 0
         assert self.spikes is not None
 
@@ -286,7 +290,7 @@ class TwoP():
             std_ = np.std(sp_)
             mean_ = np.mean(sp_)
 
-            sp_[sp_ > (mean_ + std_ * self.sd_thresh)] = mean_ + std_ * self.sd_thresh
+            sp_[sp_ > (mean_ + std_ * sd_thresh)] = mean_ + std_ * sd_thresh
 
             spikes[c, :] = sp_
 

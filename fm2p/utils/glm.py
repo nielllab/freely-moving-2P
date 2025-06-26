@@ -76,18 +76,21 @@ class GLM:
     def __init__(
             self,
             learning_rate=0.001, epochs=5000, l1_penalty=0.01, l2_penalty=0.01,
-            bias=True, num_weights=3):
+            use_bias=True, num_weights=3):
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.l1_penalty = l1_penalty
         self.l2_penalty = l2_penalty
-        self.use_bias = bias
-        if bias is True:
+        self.use_bias = use_bias
+        if use_bias is True:
             num_weights += 1
         self.weights = np.zeros(num_weights) # 3 parameters and a bias term
 
     def _sigmoid(self, z):
         return 1 / (1 + np.exp(-z))
+    
+    def _softplus(self, z):
+        return np.log(1 + np.e^z)
 
     def _loss(self, y_true, y_pred):
         m = len(y_true)
@@ -105,25 +108,22 @@ class GLM:
         # scale values
         scalerX = preprocessing.StandardScaler().fit(X)
         X_scaled = scalerX.transform(X)
-        scalerY = preprocessing.StandardScaler().fit(y)
-        y_scaled = scalerY.transform(y)
 
-        m = len(y_scaled)
+        m = len(y)
 
         for epoch in range(self.epochs):
             z = np.dot(X_scaled, self.weights)
             y_pred = self._sigmoid(z)
 
-            gradient = np.dot(X_scaled.T, (y_pred - y_scaled.flatten())) / m
+            gradient = np.dot(X_scaled.T, (y_pred - y.flatten())) / m
             # Apply L2 regularization (ridge)
-            gradient[1:] += self.l2_penalty * 2 * self.weights
+            gradient += self.l2_penalty * 2 * self.weights
             # Apply L1 regularization (lasso) - subgradient method
-            gradient[1:] += self.l1_penalty * np.sign(self.weights)
+            gradient += self.l1_penalty * np.sign(self.weights)
 
             self.weights -= self.learning_rate * gradient
 
         self.scalerX = scalerX
-        self.scalerY = scalerY
 
     def fit(self, X, y):
 
@@ -163,14 +163,34 @@ class GLM:
 
         X_scaled = self.scalerX.transform(X)
 
-        if X.shape[1] != 3:
-            raise ValueError("Input X must have exactly 3 features for this GLM.")
         X_bias = np.c_[np.ones(X_scaled.shape[0]), X_scaled]
         y_hat = self._sigmoid(np.dot(X_bias, self.weights))[:, np.newaxis]
 
         y_hat_invtrans = self.scalerY.inverse_transform(y_hat)
 
         return y_hat_invtrans, y_hat
+    
+
+    def _predict_no_bias(self, X):
+
+        X_scaled = self.scalerX.transform(X)
+
+        y_hat = self._sigmoid(np.dot(X_scaled, self.weights))[:, np.newaxis]
+
+        return y_hat
+    
+
+    def score_explained_variance(self, y, y_hat):
+        # Similar to r^2 except that this will treat an offset as error, whereas
+        # r^2 does not penalize for an offset, it just treats it as an intercept.
+
+        y_diff_avg = np.nanmean(y - y_hat, axis=0)
+        n_ = np.nanmean((y - y_hat - y_diff_avg) ** 2, axis=0)
+        y_null = np.nanmean(y, axis=0)
+        d_ = np.nanmean((y - y_null)**2, axis=0)
+
+        return n_ / d_
+
     
     def predict(self, X, y):
         # predict and score weights
@@ -179,15 +199,19 @@ class GLM:
         if len(np.shape(y)) != 2:
             y = y[:,np.newaxis]
 
-        y_scaled = self.scalerY.transform(y)
+        # y_scaled = self.scalerY.transform(y)
 
         # should be X_test and y_test as inputs
-        y_hat_invtrans, y_hat = self._predict(X)
+        if self.use_bias:
+            y_hat_invtrans, y_hat = self._predict(X)
+        elif not self.use_bias:
+            y_hat = self._predict_no_bias(X)
         
-        mse = np.mean((y_scaled - y_hat)**2)
-        mse_invtrans = np.mean((y - y_hat_invtrans)**2)
+        mse = np.mean((y - y_hat)**2)
+        explained_variance = self.score_explained_variance(y, y_hat)
 
-        return y_hat, y_hat_invtrans, mse, mse_invtrans
+        return y_hat, mse, explained_variance
+
 
     # def predict_with_dropout(self, X, y):
         # Try every combination of weights being set to 0 so that the model performance with or without
@@ -202,7 +226,9 @@ class GLM:
 
     def get_weights(self):
         return self.weights
-
+    
+    def get_scaled_X(self, X):
+        return self.scalerX.transform(X)
 
 
 def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
@@ -270,10 +296,16 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     test_inds = np.sort(np.array(test_inds)).astype(int)
 
     # GLM weights for all cells
-    w = np.zeros([
-        nCells,
-        np.size(X_shared_,1)+1     # number of features + a bias term
-    ]) * np.nan
+    if use_bias:
+        w = np.zeros([
+            nCells,
+            np.size(X_shared_,1)+1     # number of features + a bias term
+        ]) * np.nan
+    elif not use_bias:
+        w = np.zeros([
+            nCells,
+            np.size(X_shared_,1)     # number of features + a bias term
+        ]) * np.nan
     # Predicted spike rate for the test data
     y_hat = np.zeros([
         nCells,
@@ -281,13 +313,14 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     ]) * np.nan
     # Mean-squared error for each cell
     mse = np.zeros(nCells) * np.nan
+    explvar = np.zeros(nCells) * np.nan
 
     # for scaled values (not the inverse transformed arrays)
-    y_hat1 = np.zeros([
-        nCells,
-        len(test_inds)
-    ]) * np.nan
-    mse1 = np.zeros(nCells) * np.nan
+    # y_hat1 = np.zeros([
+    #     nCells,
+    #     len(test_inds)
+    # ]) * np.nan
+    # mse1 = np.zeros(nCells) * np.nan
 
     X_train = X_shared_[train_inds, :].copy()
     X_test = X_shared_[test_inds, :].copy()
@@ -309,16 +342,14 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
 
         cell_model.fit(X_train, y_train_c)
 
-        y_hat_c, y_hat_cit, mse_c, mse_cit = cell_model.predict(X_test, y_test_c)
+        y_hat_c, mse_c, explvar_ = cell_model.predict(X_test, y_test_c)
 
         w_c = cell_model.get_weights()
 
         w[cell,:] = w_c.copy()
-        y_hat[cell,:] = y_hat_cit.copy().flatten()
-        mse[cell] = mse_cit
-
-        y_hat1[cell,:] = y_hat_c.copy().flatten()
-        mse1[cell] = mse_c
+        y_hat[cell,:] = y_hat_c.copy().flatten()
+        mse[cell] = mse_c
+        explvar[cell] = explvar_
 
         # Initialize model as a GLM with a Tweedie distribution.
         # model = linear_model.TweedieRegressor(
@@ -339,19 +370,21 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
         # pred = w @ X_test
         # scoreval = calc_score(y_test, pred)
 
+    X_scaled = cell_model.get_scaled_X(X_train)
+
 
     result = {
-        'y_test_hat': y_hat1,
         'GLM_weights': w,
-        'GLM_MSE': mse1,
         'speeduse': use,
         'keepFmask': _keepFmask,
         'X': X_shared_,
         'y': spikes_,
         'train_inds': train_inds,
         'test_inds': test_inds,
-        'y_test_hat_scaled': y_hat,
-        'GLM_MSE_scaled': mse
+        'y_test_hat': y_hat,
+        'MSE': mse,
+        'explvar': explvar,
+        'X_scaled': X_scaled
     }
 
     return result

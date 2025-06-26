@@ -309,11 +309,16 @@ def preprocess(cfg_path=None, spath=None):
                 iscell=iscell
             )
             twop_dict = twop_recording.calc_dFF(neu_correction=0.7, oasis=False)
+            twop_recording.calc_dFF_transients()
+            # Set a maximum spike rate for each cell, then normalize spikes
+            twop_recording.normalize_spikes()
 
             twop_dt = 1./cfg['twop_rate']
             twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
             twop_dict['twopT'] = twopT
             twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
+            twop_dict['norm_spikes'] = twop_recording.cleanspikes
+            twop_dict['dFF_transients'] = twop_recording.dFF_transients
 
         elif axons:
             twop_dict = {}
