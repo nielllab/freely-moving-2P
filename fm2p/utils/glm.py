@@ -75,110 +75,98 @@ def compute_y_hat(X, y, w):
 class GLM:
     def __init__(
             self,
-            learning_rate=0.001, epochs=5000, l1_penalty=0.01, l2_penalty=0.01,
-            use_bias=True, num_weights=3):
+            learning_rate=0.001,
+            epochs=5000,
+            l1_penalty=0.01,
+            l2_penalty=0.01,
+        ):
+
         self.learning_rate = learning_rate
         self.epochs = epochs
         self.l1_penalty = l1_penalty
         self.l2_penalty = l2_penalty
-        self.use_bias = use_bias
-        if use_bias is True:
-            num_weights += 1
-        self.weights = np.zeros(num_weights) # 3 parameters and a bias term
+
+        self.weights = None
+        self.X_means = None
+        self.X_stds = None
 
     def _sigmoid(self, z):
         return 1 / (1 + np.exp(-z))
     
     def _softplus(self, z):
-        return np.log(1 + np.e^z)
+        return np.log(1 + np.exp(z))
+    
+    def _zscore(self, X):
+
+        X_z = np.zeros_like(X)
+        savemeans = np.zeros(np.size(X,1))
+        savestd = np.zeros(np.size(X,1))
+
+        for feat in range(np.size(X,1)):
+            mean_ = np.nanmean(X)
+            std_ = np.nanstd(X)
+            X_z[:, feat] = (X[:, feat] - mean_) / std_
+
+        return X_z, savemeans, savestd
+    
+    def _apply_zscore(self, X):
+
+        X_z = np.zeros_like(X)
+
+        for feat in range(np.size(X,1)):
+            X_z[:, feat] = (X[:, feat] - self.X_means[feat]) / self.X_stds[feat]
+
+        return X_z
 
     def _loss(self, y_true, y_pred):
+
         m = len(y_true)
         log_loss = -np.mean(y_true * np.log(y_pred + 1e-15) + (1 - y_true) * np.log(1 - y_pred + 1e-15))
         l1 = self.l1_penalty * np.sum(np.abs(self.weights[1:]))
         l2 = self.l2_penalty * np.sum(self.weights[1:] ** 2)
+
         return log_loss + l1 + l2
     
-    def _fit_no_bias(self, X, y):
+    def fit(self, X, y):
+
+        self.weights = np.zeros(np.size(X,1)+1)
 
         # if y is 1D
         if len(np.shape(y)) != 2:
             y = y[:,np.newaxis]
 
         # scale values
-        scalerX = preprocessing.StandardScaler().fit(X)
-        X_scaled = scalerX.transform(X)
+        X_scaled, Xmeans, Xstds = self._zscore(X)
+        self.X_means = Xmeans
+        self.X_stds = Xstds
 
+        # Add bias term
+        X_bias = np.c_[np.ones(X_scaled.shape[0]), X_scaled]
         m = len(y)
 
         for epoch in range(self.epochs):
-            z = np.dot(X_scaled, self.weights)
-            y_pred = self._sigmoid(z)
-
-            gradient = np.dot(X_scaled.T, (y_pred - y.flatten())) / m
-            # Apply L2 regularization (ridge)
-            gradient += self.l2_penalty * 2 * self.weights
-            # Apply L1 regularization (lasso) - subgradient method
-            gradient += self.l1_penalty * np.sign(self.weights)
-
-            self.weights -= self.learning_rate * gradient
-
-        self.scalerX = scalerX
-
-    def fit(self, X, y):
-
-        if not self.use_bias:
-            self._fit_no_bias(X,y)
-            return
-
-        # if y is 1D
-        if len(np.shape(y)) != 2:
-            y = y[:,np.newaxis]
-
-        # scale values
-        scalerX = preprocessing.StandardScaler().fit(X)
-        X_scaled = scalerX.transform(X)
-        scalerY = preprocessing.StandardScaler().fit(y)
-        y_scaled = scalerY.transform(y)
-
-        X_bias = np.c_[np.ones(X_scaled.shape[0]), X_scaled]  # Add bias term
-        m = len(y_scaled)
-
-        for epoch in range(self.epochs):
             z = np.dot(X_bias, self.weights)
-            y_pred = self._sigmoid(z)
+            y_pred = self._softplus(z)
 
-            gradient = np.dot(X_bias.T, (y_pred - y_scaled.flatten())) / m
+            gradient = np.dot(X_bias.T, (y_pred - y.flatten())) / m
             # Apply L2 regularization (ridge)
             gradient[1:] += self.l2_penalty * 2 * self.weights[1:]
             # Apply L1 regularization (lasso) - subgradient method
-            gradient[1:] += self.l1_penalty * np.sign(self.weights[1:])
+            gradient[1:] += self.l1_penalty * np.sign(self.weights)[1:]
 
             self.weights -= self.learning_rate * gradient
 
-        self.scalerX = scalerX
-        self.scalerY = scalerY
-
     def _predict(self, X):
 
-        X_scaled = self.scalerX.transform(X)
+        assert self.X_means is not None
+        assert self.X_stds is not None
+
+        X_scaled = self._apply_zscore(X)
 
         X_bias = np.c_[np.ones(X_scaled.shape[0]), X_scaled]
-        y_hat = self._sigmoid(np.dot(X_bias, self.weights))[:, np.newaxis]
-
-        y_hat_invtrans = self.scalerY.inverse_transform(y_hat)
-
-        return y_hat_invtrans, y_hat
-    
-
-    def _predict_no_bias(self, X):
-
-        X_scaled = self.scalerX.transform(X)
-
-        y_hat = self._sigmoid(np.dot(X_scaled, self.weights))[:, np.newaxis]
+        y_hat = self._softplus(np.dot(X_bias, self.weights))[:, np.newaxis]
 
         return y_hat
-    
 
     def score_explained_variance(self, y, y_hat):
         # Similar to r^2 except that this will treat an offset as error, whereas
@@ -190,7 +178,6 @@ class GLM:
         d_ = np.nanmean((y - y_null)**2, axis=0)
 
         return n_ / d_
-
     
     def predict(self, X, y):
         # predict and score weights
@@ -199,19 +186,13 @@ class GLM:
         if len(np.shape(y)) != 2:
             y = y[:,np.newaxis]
 
-        # y_scaled = self.scalerY.transform(y)
-
         # should be X_test and y_test as inputs
-        if self.use_bias:
-            y_hat_invtrans, y_hat = self._predict(X)
-        elif not self.use_bias:
-            y_hat = self._predict_no_bias(X)
+        y_hat = self._predict(X)
         
         mse = np.mean((y - y_hat)**2)
         explained_variance = self.score_explained_variance(y, y_hat)
 
         return y_hat, mse, explained_variance
-
 
     # def predict_with_dropout(self, X, y):
         # Try every combination of weights being set to 0 so that the model performance with or without
@@ -223,33 +204,53 @@ class GLM:
 
         # How many combinations should I try?
 
-
     def get_weights(self):
         return self.weights
     
-    def get_scaled_X(self, X):
-        return self.scalerX.transform(X)
+
+def add_temporal_features(X, add_lags=1):
+
+    nFrames, nFeats = np.shape(X)
+    nFeatsOut = nFeats+(nFeats*add_lags)
+
+    X_temporal = np.zeros([nFrames,nFeatsOut]) * np.nan
+
+    print(nFeatsOut)
+
+    i = 0
+    for feat in range(nFeats):
+        # Aligned data
+        X_temporal[:,i] = X[:,feat].copy()
+        i += 1
+
+        for lag in range(1, add_lags+1):
+            # Iterate through each lag position
+            r = np.roll(X[:,feat].copy(), shift=-lag)
+            r[lag:-lag] = np.nan
+            X_temporal[:,i] = r
+            i += 1
+
+    # Drop the beginning and end of recording where there will be leftover NaNs
+    X_temporal = X_temporal[add_lags:-add_lags]
+
+    return X_temporal
 
 
 def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     # spikes for a whole dataset of neurons, shape = {#frames, #cells}
-
 
     if opts is None:
         learning_rate = 0.001
         epochs = 5000
         l1_penalty = 0.01
         l2_penalty = 0.01
-        num_weights = 3
-        use_bias = True
+        num_lags = 10
     elif opts is not None:
         learning_rate = opts['learning_rate']
         epochs = opts['epochs']
         l1_penalty = opts['l1_penalty']
         l2_penalty = opts['l2_penalty']
-        num_weights = opts['num_weights']
-        use_bias = opts['use_bias']
-
+        num_lags = opts['num_lags']
 
     # First, threshold all inputs by the animal's speed, i.e., drop
     # frames in which the animal is stationary
@@ -261,8 +262,14 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     retino = retino[use]
     ego = ego[use]
 
-    nFrames, nCells = np.shape(spikes)
+    _, nCells = np.shape(spikes)
     X_shared = np.stack([pupil, retino, ego], axis=1)
+
+    # For each behavioral measure, add 9 previous time points so temporal
+    # filters are learned. If it started w/ 3 features, will now have 30.
+    if num_lags > 1:
+        X_shared = add_temporal_features(X_shared, add_lags=num_lags)
+        spikes = spikes[num_lags-1:-(num_lags-1), :]
 
     # Drop any frame for which one of the behavioral varaibles was NaN
     # At the end, need to compute y_hat and then add NaN indices back in so that temporal
@@ -271,15 +278,17 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     X_shared_ = X_shared.copy()[_keepFmask,:]
     spikes_ = spikes.copy()[_keepFmask,:]
 
+    nFrames = np.sum(_keepFmask)
+    print(nFrames)
+
     # Make train/test split by splitting frames into 20 chunks,
     # shuffling the order of those chunks, and then grouping them
     # into two groups at a 75/25 ratio. Same timepoint split will
     # be used across all cells.
     ncnk = 20
     traintest_frac = 0.75
-    _len = np.sum(_keepFmask)
-    cnk_sz = _len // ncnk
-    _all_inds = np.arange(0,_len)
+    cnk_sz = nFrames // ncnk
+    _all_inds = np.arange(0,nFrames)
     chunk_order = np.arange(ncnk)
     np.random.shuffle(chunk_order)
     train_test_boundary = int(ncnk * traintest_frac)
@@ -296,16 +305,10 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     test_inds = np.sort(np.array(test_inds)).astype(int)
 
     # GLM weights for all cells
-    if use_bias:
-        w = np.zeros([
-            nCells,
-            np.size(X_shared_,1)+1     # number of features + a bias term
-        ]) * np.nan
-    elif not use_bias:
-        w = np.zeros([
-            nCells,
-            np.size(X_shared_,1)     # number of features + a bias term
-        ]) * np.nan
+    w = np.zeros([
+        nCells,
+        np.size(X_shared_,1)+1    # number of features + a bias term
+    ]) * np.nan
     # Predicted spike rate for the test data
     y_hat = np.zeros([
         nCells,
@@ -315,16 +318,8 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
     mse = np.zeros(nCells) * np.nan
     explvar = np.zeros(nCells) * np.nan
 
-    # for scaled values (not the inverse transformed arrays)
-    # y_hat1 = np.zeros([
-    #     nCells,
-    #     len(test_inds)
-    # ]) * np.nan
-    # mse1 = np.zeros(nCells) * np.nan
-
     X_train = X_shared_[train_inds, :].copy()
     X_test = X_shared_[test_inds, :].copy()
-
 
     for cell in tqdm(range(nCells)):
 
@@ -336,8 +331,6 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
             epochs=epochs,
             l1_penalty=l1_penalty,
             l2_penalty=l2_penalty,
-            use_bias=use_bias,
-            num_weights=num_weights
         )
 
         cell_model.fit(X_train, y_train_c)
@@ -370,7 +363,7 @@ def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):
         # pred = w @ X_test
         # scoreval = calc_score(y_test, pred)
 
-    X_scaled = cell_model.get_scaled_X(X_train)
+    X_scaled = cell_model._apply_zscore(X_train)
 
 
     result = {
