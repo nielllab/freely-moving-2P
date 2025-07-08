@@ -58,12 +58,9 @@ def summarize_revcorr_ltdk():
     egocentric = data['egocentric'].copy()
     # mean-center theta (not measured relative to the head)
     theta = data['theta_interp'].copy()
-    pupil = theta - np.nanmean(theta)
     speed = data['speed'].copy()
     use = speed > 1.5
-    # Invert light/dark state vector (as written in the h5, 1 is dark, 0 is light).
-    # For convinience, this will be inverted, so that 1 is light.
-    ltdk = ~data['ltdk_state_vec'].copy()
+    ltdk = data['ltdk_state_vec'].copy()
 
     # Make sure that it is a light/dark recording (this is a bool value)
     assert data['ltdk']
@@ -79,52 +76,45 @@ def summarize_revcorr_ltdk():
     # eye position is different between the two recordings. i could scale them independently,
     # but then i wouldn't have comparable bins. Switched to mean-centered theta (7/7/25) which
     # should fix this.
-    pupil_bins = np.linspace(
-        np.nanpercentile(pupil, 5),
-        np.nanpercentile(pupil, 95),
-        13
-    )
     retino_bins = np.linspace(-180, 180, 27) # 14 deg bins
     ego_bins = np.linspace(-180, 180, 27)
 
     lag_vals = [-3,-2,-1,0,1,2,3,4,20]
 
     # Divide into two recordings: light and dark conditions
-    spikes_lt = spikes.copy()[:,ltdk]
-    spikes_dk = spikes.copy()[:,~ltdk]
-    egocentric_lt = egocentric.copy()[ltdk]
-    egocentric_dk = egocentric.copy()[~ltdk]
-    retinocentric_lt = retinocentric.copy()[ltdk]
-    retinocentric_dk = retinocentric.copy()[~ltdk]
-    pupil_lt = pupil.copy()[ltdk]
-    pupil_dk = pupil.copy()[~ltdk]
-    speeduse_lt = use.copy()[ltdk]
-    speeduse_dk = use.copy()[~ltdk]
 
     for state in range(0,2):
 
         # 0 is dark condition, 1 is light condition
         state = bool(state)
 
-        if state == False:
-            spikes_ = spikes_dk
-            egocentric_ = egocentric_dk
-            retinocentric_ = retinocentric_dk
-            pupil_ = pupil_dk
-            speeduse_ = speeduse_dk
-            ltdkuse_ = ltdk.copy()
-
+        if state == 0:
             statename = 'dark'
+            speeduse_ = use.copy()[~ltdk]
+            ltdkuse_ = (~ltdk.copy()) * use.copy()
+            ltdk_plain_ = ~ltdk.copy()
+            spikes_ = spikes.copy()[:,~ltdk]
+            egocentric_ = egocentric.copy()[~ltdk]
+            retinocentric_ = retinocentric.copy()[~ltdk]
 
-        elif state == True:
-            spikes_ = spikes_lt
-            egocentric_ = egocentric_lt
-            retinocentric_ = retinocentric_lt
-            pupil_ = pupil_lt
-            speeduse_ = speeduse_lt
-            ltdkuse_ = ~ltdk.copy()
-
+        elif state == 1:
             statename = 'light'
+            speeduse_ = use.copy()[ltdk]
+            ltdkuse_ = (ltdk.copy()) * use.copy()
+            ltdk_plain_ = ltdk.copy()
+            spikes_ = spikes.copy()[:,ltdk]
+            egocentric_ = egocentric.copy()[ltdk]
+            retinocentric_ = retinocentric.copy()[ltdk]
+
+        pupil_ = (theta.copy() - np.nanmean(theta))[ltdkuse_]
+
+        pupil_bins = np.linspace(
+            np.nanpercentile(pupil_, 5),
+            np.nanpercentile(pupil_, 95),
+            13
+        )
+
+        print('  -> Calculating tunings and making summary PDF for {} state.'.format(statename))
 
         spiketrains = np.zeros([
             np.size(spikes_, 0),
@@ -173,12 +163,13 @@ def summarize_revcorr_ltdk():
 
         savepath, savename = os.path.split(preproc)
         savename = '{}_revcorrRFs_v{}_{}.pdf'.format(savename.split('_preproc')[0], versionnum, statename)
-        pdf = PdfPages(os.path.join(savepath, savename))
+        pdfsavepath = os.path.join(savepath, savename)
+        pdf = PdfPages(pdfsavepath)
 
         ### BEHAVIORAL OCCUPANCY
         fig, [[ax1,ax2,ax3],[ax4,ax5,ax6]] = plt.subplots(2, 3, dpi=300, figsize=(5.5,3.5))
 
-        ax1.hist(pupil_[speeduse_], bins=pupil_bins, color='tab:blue')
+        ax1.hist(pupil_, bins=pupil_bins, color='tab:blue')
         ax1.set_xlabel('pupil (deg)')
         ax1.set_xlim([pupil_bins[0], pupil_bins[-1]])
 
@@ -196,7 +187,7 @@ def summarize_revcorr_ltdk():
         elif not state:
             _showspeed = _showspeed[~ltdk]
         ax4.hist(_showspeed, bins=np.linspace(0,60,20), color='k')
-        ax4.set_title('{:.4}% running time'.format((np.sum(speeduse_)/len(ltdkuse_))*100))
+        ax4.set_title('{:.4}% running time'.format((np.sum(ltdkuse_)/len(ltdk_plain_))*100))
         ax4.set_xlabel('speed (cm/s)')
 
         ax5.plot(data['head_x'][ltdkuse_], data['head_y'][ltdkuse_], 'k.', ms=1, alpha=0.3)
@@ -207,7 +198,7 @@ def summarize_revcorr_ltdk():
         ax6.set_xlabel('theta (deg)')
         ax6.set_ylabel('phi (deg)')
 
-        running_frac = len(data['twopT'][ltdkuse_]) / len(data['twopT'][ltdk])
+        running_frac = len(data['twopT'][ltdkuse_]) / len(data['twopT'][ltdk_plain_])
         running_min = running_frac * (data['twopT'][-1] / 60)
 
         fig.suptitle('{} ({:.3}/{:.3} min)'.format(
@@ -256,13 +247,13 @@ def summarize_revcorr_ltdk():
         plt.close()
 
         cell_corrvals = np.zeros([
-            np.size(spikes, 0),
+            np.size(spikes_, 0),
             3,                      # {pupil, retino, ego}
             len(lag_vals)
         ]) * np.nan
 
         ### SUMMARIZE TUNING OF INDIVIDUAL CELLS
-        for c_i in tqdm(range(np.size(spikes, 0))):
+        for c_i in tqdm(range(np.size(spikes_, 0))):
 
             fig, axs = plt.subplots(3, 9, dpi=300, figsize=(15,6))
 
@@ -271,11 +262,13 @@ def summarize_revcorr_ltdk():
             for lag_ind, lag_val in enumerate(lag_vals):
                 
                 # for cell_i in range(np.size(spikes,0)):
+                # Must into the sectiosn of the recording for this light/dark state AFTER
+                # applying the temporal roll. otherwise, rolls will be non-continuous jumps in time.
                 spiketrains[c_i,:] = np.roll(spikes[c_i,:], shift=lag_val)[ltdkuse_]
 
                 pupil_cent, pupil_tuning, pupil_err = fm2p.tuning_curve(
                     spiketrains[c_i,:][np.newaxis,:],
-                    pupil[ltdkuse_],
+                    pupil_,
                     pupil_bins
                 )
                 ret_cent, ret_tuning, ret_err = fm2p.tuning_curve(
@@ -291,7 +284,7 @@ def summarize_revcorr_ltdk():
 
                 pupil_corr = fm2p.calc_tuning_reliability(
                     spiketrains[c_i, :][np.newaxis,:],
-                    pupil[ltdkuse_],
+                    pupil_,
                     pupil_bins,
                 )
                 retino_corr = fm2p.calc_tuning_reliability(
@@ -381,7 +374,9 @@ def summarize_revcorr_ltdk():
             'ego_centers': ego_cent
         }
 
-        fm2p.write_h5(os.path.join(savepath, 'tuning_data_{}_v{}.h5'.format(statename, versionnum)), tuning_data)
+        h5savepath = os.path.join(savepath, 'tuning_data_{}_v{}.h5'.format(statename, versionnum))
+        fm2p.write_h5(h5savepath, tuning_data)
+        print('  -> Saved {}'.format(h5savepath))
 
         # fig, axs = plt.subplots(3,3, dpi=300, figsize=(6,4))
         # axs = axs.flatten()
@@ -500,7 +495,9 @@ def summarize_revcorr_ltdk():
 
         pdf.close()
 
+        print('  -> Closed {}'.format(pdfsavepath))
+
 
 if __name__ == '__main__':
 
-    summarize_revcorr_ltdk() # r'Z:\Mini2P_data\250626_DMM_DMM037_ltdk\fm1\250626_DMM_DMM037_fm_01_preproc.h5', 3)
+    summarize_revcorr_ltdk()
