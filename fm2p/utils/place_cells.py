@@ -235,8 +235,8 @@ class SpatialCoding():
 
 
         criteria_dict = {
-            'spatial_info': sigSI,
-            'reliability': sigRel,
+            'place_cell_spatial_info': sigSI,
+            'place_cell_reliability': sigRel,
             'has_place_field': hasPlaceField
         }
         place_cell_inds = sigSI & sigRel & hasPlaceField

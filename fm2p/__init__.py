@@ -199,3 +199,11 @@ from .utils.glm import (
 
 from .deinter_dir import deinter_dir
 
+from .utils.place_cells import (
+    SpatialCoding,
+    plot_place_cell_maps
+)
+
+from .utils.hippocampus_preprocessing import (
+    hippocampal_preprocess
+)
