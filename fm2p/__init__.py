@@ -207,3 +207,5 @@ from .utils.place_cells import (
 from .utils.hippocampus_preprocessing import (
     hippocampal_preprocess
 )
+
+from .pred_pupil import pred_pupil

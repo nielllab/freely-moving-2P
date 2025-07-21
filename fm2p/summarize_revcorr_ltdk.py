@@ -261,7 +261,6 @@ def summarize_revcorr_ltdk():
 
             for lag_ind, lag_val in enumerate(lag_vals):
                 
-                # for cell_i in range(np.size(spikes,0)):
                 # Must into the sectiosn of the recording for this light/dark state AFTER
                 # applying the temporal roll. otherwise, rolls will be non-continuous jumps in time.
                 spiketrains[c_i,:] = np.roll(spikes[c_i,:], shift=lag_val)[ltdkuse_]

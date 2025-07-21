@@ -116,7 +116,7 @@ def plot_tuning(ax, var_cent, tuning, tuning_err, color, rad=True):
     ax.set_xlim([var_cent[0], var_cent[-1]])
 
 
-def calc_modind(bins, tuning, fr, thresh=0.33):
+def calc_modind(bins, tuning, fr=None, thresh=0.33):
     """ Calculate modulation index and peak of tuning curve.
 
     Modulation index of 0.33 is a double of firing rate relative to the baseline.
@@ -143,11 +143,12 @@ def calc_modind(bins, tuning, fr, thresh=0.33):
         the firing rate is highest.
     """
 
-    # Mean firing rate across the recording
-    b = np.nanmean(fr)
+    if fr is not None:
+        # Mean firing rate across the recording
+        b = np.nanmean(fr)
+    else:
+        b = np.nanmin(tuning)
     peak_val = np.nanmax(tuning)
-
-    # print(b, peak_val)
 
     # diff over sum
     modind = (peak_val - b) / (peak_val + b)
@@ -201,7 +202,7 @@ def calc_tuning_reliability1(spikes, behavior, bins, splits_inds):
 
     return pval_across_cnks
 
-def calc_tuning_reliability(spikes, behavior, bins, ncnk=10):
+def calc_tuning_reliability(spikes, behavior, bins, ncnk=10, ret_terr=False):
     """ Calculate tuning reliability between two halves of the data.
 
     Parameters
@@ -267,6 +268,10 @@ def calc_tuning_reliability(spikes, behavior, bins, ncnk=10):
     # more efficient than scipy but does not calculate the p value)
     [tuning1, tuning2] = fm2p.nan_filt([tuning1, tuning2])
     pearson_result = fm2p.corr2_coeff(tuning1, tuning2)
+
+    if ret_terr:
+        total_error = np.sum(np.abs(tuning1[0] - tuning2[0]))
+        return pearson_result, total_error
 
     return pearson_result
 
