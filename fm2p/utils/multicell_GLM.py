@@ -1,5 +1,5 @@
 
-
+import os
 from tqdm import tqdm
 import numpy as np
 import multiprocessing
@@ -35,6 +35,9 @@ class multicell_GLM:
     
     def _softplus(self, z):
         return np.log1p(np.exp(-np.abs(z))) + np.maximum(z,0)
+    
+    def _tanh(self, z):
+        return np.tanh(z)
     
     def _zscore(self, X):
 
@@ -91,7 +94,7 @@ class multicell_GLM:
 
         for epoch in range(self.epochs):
             z = np.dot(X_bias, self.weights)
-            y_hat = self._softplus(z).T
+            y_hat = self._tanh(z).T
 
             # calculate loss
             lossval = self._loss(y, y_hat)
@@ -118,7 +121,7 @@ class multicell_GLM:
     def _predict(self, X):
 
         X_bias = np.c_[np.ones(X.shape[1]), X.T]
-        y_hat = self._softplus(np.dot(X_bias, self.weights))
+        y_hat = self._tanh(np.dot(X_bias, self.weights))
 
         return y_hat
     
@@ -157,19 +160,47 @@ class multicell_GLM:
         return self.train_inds, self.test_inds, self.nan_mask
 
 
+    def apply_transform(self, A):
+
+        n_feats = np.size(A,0)
+
+        assert n_feats == len(self.scalers)
+
+        A_scale = np.zeros_like(A) * np.nan
+
+        for feat in range(n_feats):
+            A_scale[feat,:] = self.scalers[feat].transform(A[feat,:][:,np.newaxis]).flatten()
+
+        return A_scale
+
+
     def fit_apply_transform(self, A):
         # a must be array-like. can be 1D or 2D. could be x or y, but
         # cannot apply to both.
-        self.scaler = RobustScaler().fit(A)
 
-        A_scale = self.scaler.transform(A)
+        # for each feature along axis=0, train an independent scaler
+        n_feats = np.size(A,0)
+
+        self.scalers = []
+
+        for feat in range(n_feats):
+            self.scalers.append(RobustScaler().fit(A[feat,:][:,np.newaxis]))
+
+        A_scale = self.apply_transform(A)
 
         return A_scale
 
 
     def apply_inverse_transform(self, A):
 
-        A_invtran = self.scaler.inverse_transform(A)
+        n_feats = np.size(A,0)
+
+        assert n_feats == len(self.scalers)
+
+        A_invtran = np.zeros_like(A) * np.nan
+
+        for feat in range(n_feats):
+            A_invtran[feat,:] = self.scalers[feat].inverse_transform(A[feat,:][:,np.newaxis]).flatten()
 
         return A_invtran
     
@@ -222,10 +253,10 @@ class multicell_GLM:
 if __name__ == '__main__':
 
     preproc_path = r'Z:\Mini2P_data\250626_DMM_DMM037_ltdk\fm1\250626_DMM_DMM037_fm_01_preproc.h5'
-    learning_rate = 0.001
-    epochs = 5
-    l1_penalty = 0.01
-    l2_penalty = 0.01
+    learning_rate = 0.05
+    epochs = 6000
+    l1_penalty = 0
+    l2_penalty = 0.0001
 
     data = fm2p.read_h5(preproc_path)
     # revcorr_data = fm2p.read_h5(revcorr_path)
@@ -267,12 +298,15 @@ if __name__ == '__main__':
     yp_hat, pupil_mse, pupil_explvar = pupil_model.predict(Xp_test, yp_test)
 
     pupil_weights = pupil_model.get_weights()
-    train_inds, test_inds, nan_mask = pupil_model.get_train_test_inds
+    train_inds, test_inds, nan_mask = pupil_model.get_train_test_inds()
     yp_test_unscaled = y_pupil.copy()[:,nan_mask]
 
+    # Test on the train data to see if it at least predicts that
+    yp_train_hat, train_mse, explvar_train = pupil_model.predict(Xp_train, yp_train)
+
     results = {
-        'weights': pupil_weights.copy(),
-        'y_hat': yp_hat.copy().flatten(),
+        'weights': pupil_weights,
+        'y_hat': pupil_model.apply_inverse_transform(yp_hat.T),
         'MSE': pupil_mse,
         'explvar': pupil_explvar,
         'loss_history': pupil_model.get_loss_history(),
@@ -280,6 +314,17 @@ if __name__ == '__main__':
         'X_test': Xp_test,
         'y_train': pupil_model.apply_inverse_transform(yp_train),
         'y_test': pupil_model.apply_inverse_transform(yp_test),
-        'y_test_unscaled': yp_test_unscaled
+        'y_test_unscaled': yp_test_unscaled,
+        'y_hat_train': pupil_model.apply_inverse_transform(yp_train_hat.T),
+        'MSE_train': train_mse,
+        'explvar_train': explvar_train
     }
+
+    savedir = os.path.split(preproc_path)[0]
+    basename = os.path.split(preproc_path)[1][:-11]
+    savepath = os.path.join(savedir, '{}_multicell_GLM_results.h5'.format(basename))
+    fm2p.write_h5(savepath, results)
+
+    print('\n Saved {}'.format(savepath))
+
 

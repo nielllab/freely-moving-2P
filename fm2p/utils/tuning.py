@@ -405,7 +405,11 @@ def calc_reliability_d(spikes, behavior, bins, n_cnk=10, n_shfl=100, thresh=0.8)
         correlations[shfl_i,0,:] = [fm2p.corrcoef(tunings[0,shfl_i,0,c,:], tunings[0,shfl_i,1,c,:]) for c in range(n_cells)]
         correlations[shfl_i,1,:] = [fm2p.corrcoef(tunings[1,shfl_i,0,c,:], tunings[1,shfl_i,1,c,:]) for c in range(n_cells)]
 
-    cohen_d_vals = np.array([fm2p.calc_cohen_d(correlations[:,0,c], correlations[:,1,c]) for c in range(n_cells)])
+    # If correlation is np.nan for any shuffles, drop it so that cohen d values can still be calculated across cells
+    # since it will be a nan spanning all cells if one shuffle failed.
+    mask = ~np.isnan(correlations[:,0,:])[:,0] * ~np.isnan(correlations[:,1,:])[:,0]
+
+    cohen_d_vals = np.array([fm2p.calc_cohen_d(correlations[mask,0,c], correlations[mask,1,c]) for c in range(n_cells)])
 
     is_reliable = cohen_d_vals > thresh
     reliable_inds = np.where(is_reliable)[0]

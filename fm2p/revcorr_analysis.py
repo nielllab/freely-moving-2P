@@ -155,6 +155,8 @@ def calc_revcorr(preproc_path):
     savepath = os.path.join(savedir, '{}_revcorr_results.h5'.format(basename))
     fm2p.write_h5(savepath, full_reliability_dict)
 
+    print('Saved {}'.format(savepath))
+
 
 def revcorr_analysis():
 
