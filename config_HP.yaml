@@ -21,13 +21,16 @@ run_cyclotorsion: false
 
 # Two-photon
 twop_rate: 7.49 # Hz
+cell_sd_thresh: 2
 
 # General options
-likelihood_thresh: 0.85
+likelihood_thresh: 0.6
 
 # Paths
 eye_DLC_project: None
 top_DLC_project: T:/dlc_projects/freely_moving_topdown_06B/config.yaml
+eyecam_DLC_search_key: '*_eyecam_deinterDLC_resnet50_*freely_moving_eyecams_03*.h5'
+topdown_DLC_search_key: '*DLC_resnet50_*freely_moving_topdown_06*.h5'
 
 # Eyecam tracking
 eye_ellipse_thresh: 0.85
@@ -43,6 +46,7 @@ eyecam_angular_offset: 90
 arena_width_cm: 56. # was 22, but that was in inches, not cm
 running_thresh: 2.
 forward_thresh: 40.
+
 # Place cell bin size, in units of cm
 place_bin_size: 3 # cm
 sd_thresh: 2

@@ -376,3 +376,25 @@ def calc_dFF1(dFF, neu_correction=0.7, fps=7.49):
         denoised_dFF[c,:], sps[c,:] = oasis.oasisAR1(dFF[c,:].copy(), g)
 
     return denoised_dFF, sps
+
+
+def normalize_axonal_spikes(spikes, cfg):
+    # set a maximum spike rate for each cell
+    # then, normalize
+
+    sd_thresh = cfg['cell_sd_thresh']
+
+    nCells = np.size(spikes, 0)
+
+    for c in range(nCells):
+        sp_ = spikes[c, :]
+        std_ = np.std(sp_)
+        mean_ = np.mean(sp_)
+
+        sp_[sp_ > (mean_ + std_ * sd_thresh)] = mean_ + std_ * sd_thresh
+
+        spikes[c, :] = sp_
+
+    norm_spikes = spikes / np.max(spikes, axis=1, keepdims=True)
+    
+    return norm_spikes

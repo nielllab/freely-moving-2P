@@ -68,7 +68,7 @@ class multicell_GLM:
         # 1e-8 is added for numerical stability to avoid log(0)
 
         # negative log-likelihood
-        nll = np.mean(y_hat - y * np.log(y_hat + 1e-8))
+        nll = np.nanmean(y_hat - y * np.log(y_hat + 1e-8))
         # L1 and L2 penalty terms
         l1 = self.l1_penalty * np.sum(np.abs(self.weights[1:]))
         l2 = self.l2_penalty * np.sum(self.weights[1:] ** 2)
@@ -252,7 +252,9 @@ class multicell_GLM:
 
 def run_pupil_model(data):
 
-    learning_rate = 0.05
+
+    # 0.05
+    learning_rate = 0.1
     epochs = 2500
     l1_penalty = 0
     l2_penalty = 0.001
@@ -280,7 +282,7 @@ def run_pupil_model(data):
 
     pupil_weights = model.get_weights()
     train_inds, test_inds, nan_mask = model.get_train_test_inds()
-    yp_test_unscaled = y.copy()[:,nan_mask][test_inds]
+    yp_test_unscaled = y.copy()[:,test_inds]
 
     # Test on the train data to see if it at least predicts that
     yp_train_hat, train_mse, explvar_train = model.predict(Xp_train, yp_train)
@@ -312,9 +314,19 @@ def run_retina_model(data):
 
     X = data['norm_spikes'].copy()
 
+    # retinocentric = data['retinocentric'].copy()
+    # pillar_size = data['pillar_size'].copy()
+    # y = np.vstack([retinocentric, pillar_size])
     retinocentric = data['retinocentric'].copy()
-    pillar_size = data['pillar_size'].copy()
-    y = np.vstack([retinocentric, pillar_size])
+
+    # because it's radial, map the angle to the unit circiel so circular
+    # continuity is built in.
+    y = np.vstack([
+        np.sin(np.deg2rad(retinocentric)),
+        np.cos(np.deg2rad(retinocentric))
+    ])
+    y[0,:] = fm2p.convfilt(fm2p.nan_interp(y[0,:]), 3)
+    y[1,:] = fm2p.convfilt(fm2p.nan_interp(y[1,:]), 3)
 
     model = fm2p.multicell_GLM(
         learning_rate=learning_rate,
@@ -329,18 +341,23 @@ def run_retina_model(data):
 
     model.fit(Xp_train, yp_train, verbose=True)
 
-    yp_hat, pupil_mse, pupil_explvar = model.predict(Xp_test, yp_test)
+    y_hat, pupil_mse, pupil_explvar = model.predict(Xp_test, yp_test)
 
     pupil_weights = model.get_weights()
     train_inds, test_inds, nan_mask = model.get_train_test_inds()
-    yp_test_unscaled = y.copy()[:,nan_mask][test_inds]
+    yp_test_unscaled = y.copy()[:,test_inds]
 
     # Test on the train data to see if it at least predicts that
     yp_train_hat, train_mse, explvar_train = model.predict(Xp_train, yp_train)
 
+    y_hat_invtran = model.apply_inverse_transform(y_hat.T)
+
+    y_hat_retino = np.rad2deg(np.arctan2(y_hat_invtran[0,:], y_hat_invtran[1,:]))
+    y_test_retino = np.rad2deg(np.arctan2(yp_test_unscaled[0,:], yp_test_unscaled[1,:]))
+
     results = {
         'weights': pupil_weights,
-        'y_hat': model.apply_inverse_transform(yp_hat.T),
+        'y_hat': model.apply_inverse_transform(y_hat.T),
         'MSE': pupil_mse,
         'explvar': pupil_explvar,
         'loss_history': model.get_loss_history(),
@@ -351,7 +368,10 @@ def run_retina_model(data):
         'y_test_unscaled': yp_test_unscaled,
         'y_hat_train': model.apply_inverse_transform(yp_train_hat.T),
         'MSE_train': train_mse,
-        'explvar_train': explvar_train
+        'explvar_train': explvar_train,
+        'y_hat_retino': y_hat_retino,
+        'y_test_retino': y_test_retino,
+        'retinocentric': retinocentric
     }
 
     return results
@@ -359,9 +379,9 @@ def run_retina_model(data):
 def run_body_model(data):
 
     learning_rate = 0.1
-    epochs = 2500
+    epochs = 5000
     l1_penalty = 0
-    l2_penalty = 0
+    l2_penalty = 0.001
 
     X = data['norm_spikes'].copy()
 
@@ -386,7 +406,7 @@ def run_body_model(data):
 
     pupil_weights = model.get_weights()
     train_inds, test_inds, nan_mask = model.get_train_test_inds()
-    yp_test_unscaled = y.copy()[:,nan_mask][test_inds]
+    yp_test_unscaled = y.copy()[:,test_inds]
 
     # Test on the train data to see if it at least predicts that
     yp_train_hat, train_mse, explvar_train = model.predict(Xp_train, yp_train)
@@ -410,12 +430,11 @@ def run_body_model(data):
     return results
 
 
+def glm2():
 
-if __name__ == '__main__':
-
-    preproc_path = r'Z:\Mini2P_data\250626_DMM_DMM037_ltdk\fm1\250626_DMM_DMM037_fm_01_preproc.h5'
-    models = 'R'
-
+    # preproc_path = r'Z:\Mini2P_data\250626_DMM_DMM037_ltdk\fm1\250626_DMM_DMM037_fm_01_preproc.h5'
+    models = 'P'
+    preproc_path = r'T:\Mini2P\250514_DMM_DMM046_LPaxons\fm1\250514_DMM_DMM046_fm_1_preproc.h5'
 
     data = fm2p.read_h5(preproc_path)
 
@@ -427,13 +446,19 @@ if __name__ == '__main__':
     if 'R' in models:
         all_model_results['retina'] = run_retina_model(data)
 
-    if 'E' in models:
+    if 'B' in models:
         all_model_results['body'] = run_body_model(data)
     
 
     savedir = os.path.split(preproc_path)[0]
     basename = os.path.split(preproc_path)[1][:-11]
-    savepath = os.path.join(savedir, '{}_multicell_GLM_results_v2_body_only.h5'.format(basename))
+    savepath = os.path.join(savedir, '{}_multicell_GLM_results_v2_LP_axonal_pupil_pred.h5'.format(basename))
+    
     fm2p.write_h5(savepath, all_model_results)
 
     print('\nSaved {}'.format(savepath))
+
+
+if __name__ == '__main__':
+
+    glm2()

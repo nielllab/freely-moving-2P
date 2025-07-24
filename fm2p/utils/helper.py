@@ -169,3 +169,12 @@ def nan_filt(items):
     items_out = [arr[:, mask] for arr in items]
 
     return items_out
+
+
+def nan_interp(y):
+    # interpolate linearly over NaNs, filling each position
+    # base on https://stackoverflow.com/questions/6518811/interpolate-nan-values-in-a-numpy-array
+    y_interp = y.copy()
+    nan_mask, x = np.isnan(y), lambda z: z.nonzero()[0]
+    y_interp[nan_mask] = np.interp(x(nan_mask), x(~nan_mask), y[~nan_mask])
+    return y_interp

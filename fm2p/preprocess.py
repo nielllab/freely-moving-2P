@@ -354,6 +354,7 @@ def preprocess(cfg_path=None, spath=None):
             twop_dict['denoised_dFF'] = denoised_dFF
             twop_dict['s2p_spks'] = sps
             twop_dict['matlab_cellinds'] = np.array(usecells)
+            twop_dict['norm_spikes'] = fm2p.normalize_axonal_spikes(sps, cfg)
 
         print('  -> Calculating retinocentric and egocentric orientations.')
 

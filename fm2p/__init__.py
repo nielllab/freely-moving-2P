@@ -12,7 +12,8 @@ from .utils.helper import (
     blockPrint,
     enablePrint,
     fix_dict_dtype,
-    nan_filt
+    nan_filt,
+    nan_interp
 )
 
 from .utils.linalg import (
@@ -74,7 +75,8 @@ from .utils.topcam import Topcam
 
 from .utils.twop import (
     TwoP,
-    calc_dFF1
+    calc_dFF1,
+    normalize_axonal_spikes
 )
 
 from .preprocess import preprocess
