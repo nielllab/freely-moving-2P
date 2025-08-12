@@ -398,7 +398,7 @@ class BoundaryTuning:
         return use_mrl_thresh, passes
     
             
-    def identify_responses(self, n_chunks=20, n_shuffles=50, corr_thresh=0.6, mrl_thresh=0.99):
+    def identify_boundary_cells(self, n_chunks=20, n_shuffles=50, corr_thresh=0.6, mrl_thresh=0.99):
 
         self.save_props = {}
 
@@ -435,7 +435,7 @@ class BoundaryTuning:
 
         return self.save_props
     
-    def identify_responses_light_dark(self, use_angle='head', use_light=False, use_dark=False):
+    def identify_responses(self, use_angle='head', use_light=False, use_dark=False):
         
             
         if use_light:
@@ -480,7 +480,7 @@ class BoundaryTuning:
         _ = self.identify_inverse_responses()
 
         print('  -> Identifying boundary cells.')
-        _ = self.identify_responses()
+        _ = self.identify_boundary_cells()
 
         data_out = {
             'occupancy': self.occupancy,
@@ -490,10 +490,22 @@ class BoundaryTuning:
             'is_EBC': self.is_EBC,
         }
         data_out = {**data_out, **self.save_props **self.inv_criteria_out}
+        self.data_out = data_out
+
+        return data_out
+
+    def save_results(self, savepath):
+
+        fm2p.write_h5(savepath, self.data_out)
 
 
-    def identify_responses_light_only(self):
+if __name__ == '__main__':
 
+    data = fm2p.read_h5('/Users/dmartins/Dropbox/demo_fm2p_data/250630_DMM_DMM037_fm_03_preproc.h5')
+
+    bt = BoundaryTuning(data)
+    bt.identify_responses(use_angle='head', use_light=True)
+    bt.save_results('/Users/dmartins/Desktop/250630_DMM_DMM037_fm_03_EBC_results_v1.h5')
 
 # shift spikes by -2 frames
 
