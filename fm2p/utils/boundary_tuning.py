@@ -17,10 +17,6 @@ class BoundaryTuning:
         self.ray_width = 3 # deg
         self.max_dist = 35 # cm
         self.dist_bin_size = 2.5 # cm
-
-        # how many of the three criteria must be met to be considered an IEBC
-        self.inv_criteria_thresh = 2
-
     
     def calc_allo_yaw(self):
         # calculate the head yaw in allocentric space from a head direction of 0 deg = facing rightwards
@@ -31,7 +27,7 @@ class BoundaryTuning:
         pupil_angle = np.deg2rad(self.data['theta_interp'])
         self.pupil_ang = (self.head_ang + pupil_angle) % (2 * np.pi)
 
-    def get_ray_distances(self, angle='head', useinds=None):
+    def get_ray_distances(self, angle='head'):
 
         if angle == 'head':
             angle_trace = self.data['head_yaw_deg'].copy()
@@ -41,10 +37,9 @@ class BoundaryTuning:
         x_trace = self.data['head_x'].copy() / self.data['pxls2cm']
         y_trace = self.data['head_y'].copy() / self.data['pxls2cm']
 
-        if useinds is not None:
-            x_trace = x_trace[useinds]
-            y_trace = y_trace[useinds]
-            angle_trace = angle_trace[useinds]
+        x_trace = x_trace[self.useinds]
+        y_trace = y_trace[self.useinds]
+        angle_trace = angle_trace[self.useinds]
 
         angle_trace = np.deg2rad(angle_trace)
 
@@ -142,12 +137,9 @@ class BoundaryTuning:
 
         return self.occupancy
     
-    def calc_rate_maps(self, useinds=None):
+    def calc_rate_maps(self):
 
-        if useinds is None:
-            spikes = self.data['norm_spikes'].copy()
-        elif useinds is not None:
-            spikes = self.data['norm_spikes'].copy()[:, useinds]
+        spikes = self.data['norm_spikes'].copy()[:, self.useinds]
 
         N_cells = self.data['norm_spikes'].shape[0]
         N_angular_bins = int(360 / self.ray_width)
@@ -274,21 +266,41 @@ class BoundaryTuning:
 
         return normal_rf_size, inverted_rf_size, passes
     
-    def identify_inverse_responses(self):
+    def identify_inverse_responses(self, inv_criteria_thresh=2):
+
+        inv_criteria_out = {}
 
         N_cells = self.rate_maps.shape[0]
         self.is_IEBC = np.zeros(N_cells, dtype=bool)
 
         for c in range(N_cells):
             ratemap = self.rate_maps[c,:,:]
-            inv_ratemap = self._invert_ratemap(ratemap)
+
             skew_val, skew_pass = self._measure_skewness(ratemap)
+
             normal_dispersion, inverted_dispersion, disp_pass = self._measure_dispursion(ratemap)
+
             normal_rf_size, inverted_rf_size, rf_pass = self._measure_receptive_field_size(ratemap)
 
             pass_count = sum([skew_pass, disp_pass, rf_pass])
-            if pass_count >= self.inv_criteria_thresh:
+            if pass_count >= inv_criteria_thresh:
                 self.is_IEBC[c] = True
+
+            inv_criteria_out['cell_{:03d}'.format(c)] = {
+                'skewness': skew_val,
+                'dispersion': {
+                    'normal': normal_dispersion,
+                    'inverted': inverted_dispersion,
+                    'passes': disp_pass
+                },
+                'rf_size': {
+                    'normal': normal_rf_size,
+                    'inverted': inverted_rf_size,
+                    'passes': rf_pass
+                }
+            }
+        
+        self.inv_criteria_out = inv_criteria_out
 
         return self.is_IEBC
     
@@ -332,12 +344,9 @@ class BoundaryTuning:
 
         return rate_map
 
-    def _calc_correlation_across_split(self, c, ncnk=20, corr_thresh=0.6, useinds=None):
+    def _calc_correlation_across_split(self, c, ncnk=20, corr_thresh=0.6):
 
-        if useinds is None:
-            _len = np.size(self.data['norm_spikes'], 1)
-        elif useinds is not None:
-            _len = np.size(useinds)
+        _len = np.size(self.useinds)
 
         cnk_sz = _len // ncnk
 
@@ -369,39 +378,32 @@ class BoundaryTuning:
 
         return corr, passes
     
-    def _test_mean_resultant_across_shuffles(self, c, mrl, n_shfl=100, mrl_thresh=0.99, useinds=None):
-
-        if useinds is None:
-            N_frames = self.data['norm_spikes'].shape[1]
-            spikes = self.data['norm_spikes'].copy()
-        elif useinds is not None:
-            N_frames = np.size(useinds)
+    def _test_mean_resultant_across_shuffles(self, c, mrl, n_shfl=100, mrl_thresh_position=99):
+            
+        N_frames = np.size(self.useinds)
 
         shuffled_mrls = []
         for shf in range(n_shfl):
             shift_amount = np.random.randint(int(0.1*N_frames), int(0.9*N_frames))
-            shifted_spikes = np.roll(self.data['norm_spikes'][c, :], shift_amount)
+            shifted_spikes = np.roll(self.data['norm_spikes'][c, self.useinds], shift_amount)
             shifted_ratemap = self._calc_single_ratemap_subsetting(c, np.arange(N_frames))
             if self.is_IEBC[c]:
                 shifted_ratemap = self._invert_ratemap(shifted_ratemap)
             _, shf_mrl, _ = self._calc_mean_resultant(shifted_ratemap)
             shuffled_mrls.append(shf_mrl)
         shuffled_mrls = np.array(shuffled_mrls)
-        use_mrl_thresh = np.percentile(shuffled_mrls, 99)
+        use_mrl_thresh = np.percentile(shuffled_mrls, mrl_thresh_position)
         passes = mrl > use_mrl_thresh
 
         return use_mrl_thresh, passes
     
             
-    def identify_responses(self):
+    def identify_responses(self, n_chunks=20, n_shuffles=50, corr_thresh=0.6, mrl_thresh=0.99):
 
         self.save_props = {}
 
-        n_chunks = 20
-        n_shuffles = 50
         N_cells = self.rate_maps.shape[0]
         self.is_EBC = np.zeros(N_cells, dtype=bool)
-        N_frames = self.data['norm_spikes'].shape[1]
 
         for c in range(N_cells):
 
@@ -413,10 +415,10 @@ class BoundaryTuning:
             mr, mrl, mra = self._calc_mean_resultant(ratemap)
 
             # correlation coefficient criteria
-            corr, corr_pass = self._calc_correlation_across_split(c, ncnk=n_chunks, corr_thresh=0.6)
+            corr, corr_pass = self._calc_correlation_across_split(c, ncnk=n_chunks, corr_thresh=corr_thresh)
 
             # mean resultant criteria
-            mrl_99_pctl, mrl_pass = self._test_mean_resultant_across_shuffles(c, mrl, n_shfl=n_shuffles, mrl_thresh=0.99)
+            mrl_99_pctl, mrl_pass = self._test_mean_resultant_across_shuffles(c, mrl, n_shfl=n_shuffles, mrl_thresh=mrl_thresh)
 
             if corr_pass and mrl_pass:
                 self.is_EBC[c] = True
@@ -433,35 +435,51 @@ class BoundaryTuning:
 
         return self.save_props
     
-    def identify_responses_light_dark(self, use_angle='head'):
+    def identify_responses_light_dark(self, use_angle='head', use_light=False, use_dark=False):
         
-        assert self.data['ltdk'] is True, 'Data must be preprocessed with light/dark conditions.'
+            
+        if use_light:
+            assert self.data['ltdk'] is True, 'Data must be preprocessed with light/dark conditions.'
+            print('  -> Calculating boundary responses for light condition.')
+            useinds = self.data['ltdk_state_vec'].copy() == 1
 
+        elif use_dark:
+            assert self.data['ltdk'] is True, 'Data must be preprocessed with light/dark conditions.'
+            print('  -> Calculating boundary responses for dark condition.')
+            useinds = self.data['ltdk_state_vec'].copy() == 0
 
-        for state in range(2):
-            if state == 0:
-                print('  -> Calculating boundary responses for light condition.')
-                useinds = self.data['ltdk_state_vec'].copy() == 1
-            elif state == 1:
-                print('  -> Calculating boundary responses for dark condition.')
-                useinds = self.data['ltdk_state_vec'].copy() == 0
+        elif (not use_light) and (not use_dark):
+            print('  -> Calculating boundary responses for all frames.')
+            useinds = np.arange(self.data['norm_spikes'].shape[1])
+
+        self.useinds = useinds
 
         # shift spike by -2 frames
         self.data['norm_spikes'] = self.data['norm_spikes'][:, :-2]
 
         # calculate potential angles
-        self.calc_allo_yaw()
-        self.calc_allo_pupil()
+        if use_angle == 'head':
+            self.calc_allo_yaw()
+
+        elif use_angle == 'pupil':
+            self.calc_allo_pupil()
 
         # calculate all ray distances
         _ = self.get_ray_distances(angle=use_angle)
 
+        print('  -> Calculating occupancy.')
         _ = self.calc_occupancy()
+
+        print('  -> Calculating rate maps.')
         _ = self.calc_rate_maps()
+
+        print('  -> Smoothing rate maps (just for later visualization).')
         _ = self.smooth_rate_maps()
 
+        print('  -> Identifying inverse boundary cells.')
+        _ = self.identify_inverse_responses()
 
-        self.identify_inverse_responses()
+        print('  -> Identifying boundary cells.')
         _ = self.identify_responses()
 
         data_out = {
@@ -471,7 +489,7 @@ class BoundaryTuning:
             'is_IEBC': self.is_IEBC,
             'is_EBC': self.is_EBC,
         }
-        data_out = {**data_out, **self.save_props}
+        data_out = {**data_out, **self.save_props **self.inv_criteria_out}
 
 
     def identify_responses_light_only(self):
