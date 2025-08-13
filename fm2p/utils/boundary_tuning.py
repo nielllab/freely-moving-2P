@@ -10,8 +10,21 @@ import multiprocessing
 
 import fm2p
 
+def convert_bools_to_ints(data):
+    new_dict = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            new_dict[key] = convert_bools_to_ints(value)  # recursive call
+        elif (isinstance(value, bool)) or (isinstance(value, np.bool_)):
+            new_dict[key] = int(value)
+        else:
+            new_dict[key] = value
+    return new_dict
+
 
 def rate_map_mp(spike_rate, occupancy, ray_distances, ray_width, dist_bin_edges, dist_bin_size):
+    """ Calculate rate map (for multiprocessing only)
+    """
 
     N_angular_bins = int(360 / ray_width)
     N_distance_bins = len(dist_bin_edges) - 1
@@ -29,7 +42,10 @@ def rate_map_mp(spike_rate, occupancy, ray_distances, ray_width, dist_bin_edges,
 
     return rate_map
 
+
 def calc_MRL_mp(ratemap, ray_width, dist_bin_cents):
+    """ Calculate mean resultant length (for multiprocessing only)
+    """
 
     N_angular_bins, N_distance_bins = ratemap.shape
     angs_rad = np.deg2rad(np.arange(0, 360, ray_width))
@@ -52,7 +68,7 @@ def calc_shfl_mean_resultant_mp(spikes, useinds, occupancy, ray_distances, ray_w
 
     shift_amount = np.random.randint(int(0.1*N_frames), int(0.9*N_frames))
     shifted_spikes = np.roll(spikes[useinds], shift_amount)
-    shifted_ratemap = rate_map_mp(shifted_spikes, occupancy, occupancy, ray_distances, ray_width, dist_bin_edges, dist_bin_size)
+    shifted_ratemap = rate_map_mp(shifted_spikes, occupancy, ray_distances, ray_width, dist_bin_edges, dist_bin_size)
     if is_IEBC:
         shifted_ratemap = np.max(shifted_ratemap) - shifted_ratemap + np.min(shifted_ratemap)
     shf_mrl = calc_MRL_mp(shifted_ratemap, ray_width, dist_bin_cents)
@@ -68,22 +84,38 @@ class BoundaryTuning:
         self.ray_width = 3 # deg
         self.max_dist = 35 # cm
         self.dist_bin_size = 2.5 # cm
+
+        self.head_ang = None
+        self.pupil_ang = None
     
     def calc_allo_yaw(self):
-        # calculate the head yaw in allocentric space from a head direction of 0 deg = facing rightwards
+        """ Calculate the head yaw in allocentric space from a head direction of 0 deg = facing rightwards.
+        """
         self.head_ang = self.data['head_yaw_deg']
 
     def calc_allo_pupil(self):
-        # calculate the pupil orientation in allocentric space from a head direction of 0 deg = facing rightwards
+        """ Calculate the pupil orientation in allocentric space from a head direction of 0 deg = facing rightwards.
+        """
         pupil_angle = np.deg2rad(self.data['theta_interp'])
         self.pupil_ang = (self.head_ang + pupil_angle) % (2 * np.pi)
 
     def get_ray_distances(self, angle='head'):
+        """ Get the distance at each ray to the closest wall.
+        
+        Parameters
+        ----------
+        angle : str
+            Which angle to use for the 
+        """
 
         if angle == 'head':
-            angle_trace = self.data['head_yaw_deg'].copy()
+            if self.head_ang is None:
+                self.calc_allo_yaw()
+            angle_trace = self.head_ang
         elif angle == 'pupil':
-            angle_trace = self.data['theta_interp'].copy()
+            if  self.pupil_ang is None:
+                self.calc_allo_pupil()
+            angle_trace = self.pupil_ang
 
         x_trace = self.data['head_x'].copy() / self.data['pxls2cm']
         y_trace = self.data['head_y'].copy() / self.data['pxls2cm']
@@ -135,10 +167,12 @@ class BoundaryTuning:
             ray_distances = []
         
             for ri in range(np.size(rays_rad,1)):
+
+                # Get distance to closest wall for each ray
+
                 intersections = []
                 closest_walls = []
                 
-            
                 ray_ang = rays_rad[fr, ri]
 
                 ray_vec = np.vstack((
@@ -195,6 +229,7 @@ class BoundaryTuning:
         return self.ray_distances
     
     def calc_occupancy(self):
+
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
         self.occupancy = np.zeros((N_angular_bins, N_distance_bins))
@@ -216,8 +251,7 @@ class BoundaryTuning:
 
         n_proc = multiprocessing.cpu_count() - 1
         print('  -> Starting multiprocessing pool (n_workers: {}/{}).'.format(n_proc, multiprocessing.cpu_count()))
-        num_proc_batches = int(np.ceil(nCells / n_proc))
-        pbar = tqdm(total=num_proc_batches)
+        pbar = tqdm(total=nCells)
 
         def update_progress_bar(*args):
             pbar.update()
@@ -286,6 +320,7 @@ class BoundaryTuning:
             # pad the rate map by concatenating three copies along the angular axis
             temp_padded = np.vstack((smoothed_rate_maps[c,:,:], smoothed_rate_maps[c,:,:], smoothed_rate_maps[c,:,:]))
             # smooth the padded rate map
+            # TODO: try sigma shapes that are not symetric (i.e., smooth more along angles than i do along distance axis)
             temp_smoothed = gaussian_filter(temp_padded, sigma=1)
 
             # slice the middle third to get the final smoothed rate map
@@ -405,16 +440,19 @@ class BoundaryTuning:
                 self.is_IEBC[c] = True
 
             inv_criteria_out['cell_{:03d}'.format(c)] = {
-                'skewness': skew_val,
+                'skewness': {
+                    'val': skew_val,
+                    'passes': int(skew_pass)
+                },
                 'dispersion': {
                     'normal': normal_dispersion,
                     'inverted': inverted_dispersion,
-                    'passes': disp_pass
+                    'passes': int(disp_pass)
                 },
                 'rf_size': {
                     'normal': normal_rf_size,
                     'inverted': inverted_rf_size,
-                    'passes': rf_pass
+                    'passes': int(rf_pass)
                 }
             }
         
@@ -501,13 +539,11 @@ class BoundaryTuning:
         n_proc = multiprocessing.cpu_count() - 1
         pool = multiprocessing.Pool(processes=n_proc)
 
-        spikes = self.data['norm_spikes'][c,:].copy()
-
         mp_param_set = [
             pool.apply_async(
                 calc_shfl_mean_resultant_mp,
                 args=(
-                    spikes,
+                    self.data['norm_spikes'][c,:].copy(),
                     self.useinds,
                     self.occupancy,
                     self.ray_distances,
@@ -515,7 +551,7 @@ class BoundaryTuning:
                     self.dist_bin_edges,
                     self.dist_bin_size,
                     self.dist_bin_cents,
-                    self.is_IEBC
+                    self.is_IEBC[c]
                 )
             ) for n in range(n_shfl)
         ]
@@ -538,8 +574,8 @@ class BoundaryTuning:
         shuffled_mrls = []
         for shf in range(n_shfl):
             shift_amount = np.random.randint(int(0.1*N_frames), int(0.9*N_frames))
-            shifted_spikes = np.roll(self.data['norm_spikes'][c, self.useinds], shift_amount)
-            shifted_ratemap = self._calc_single_ratemap_subsetting(c, np.arange(N_frames))
+            shifted_inds = np.roll(np.arange(N_frames), shift_amount)
+            shifted_ratemap = self._calc_single_ratemap_subsetting(c, shifted_inds)
             if self.is_IEBC[c]:
                 shifted_ratemap = self._invert_ratemap(shifted_ratemap)
             _, shf_mrl, _ = self._calc_mean_resultant(shifted_ratemap)
@@ -550,7 +586,7 @@ class BoundaryTuning:
 
         return use_mrl_thresh, passes
     
-    def identify_boundary_cells(self, n_chunks=20, n_shuffles=50, corr_thresh=0.6, mp=True):
+    def identify_boundary_cells(self, n_chunks=20, n_shuffles=20, corr_thresh=0.6, mp=True):
 
         self.save_props = {}
 
@@ -570,7 +606,7 @@ class BoundaryTuning:
             corr, corr_pass = self._calc_correlation_across_split(c, ncnk=n_chunks, corr_thresh=corr_thresh)
 
             # mean resultant criteria
-            mrl_99_pctl, mrl_pass = self._test_mean_resultant_across_shuffles(c, mrl, n_shfl=n_shuffles)
+            mrl_99_pctl, mrl_pass = self._test_mean_resultant_across_shuffles(c, mrl, n_shfl=n_shuffles, use_mp=mp)
 
             if corr_pass and mrl_pass:
                 self.is_EBC[c] = True
@@ -580,9 +616,9 @@ class BoundaryTuning:
                 'mean_resultant_length': mrl,
                 'mean_resultant_angle': mra,
                 'corr_coeff': corr,
-                'corr_pass': corr_pass,
+                'corr_pass': int(corr_pass),
                 'mrl_99_pctl': mrl_99_pctl,
-                'mrl_pass': mrl_pass
+                'mrl_pass': int(mrl_pass)
             }
 
         return self.save_props
@@ -639,17 +675,19 @@ class BoundaryTuning:
             'occupancy': self.occupancy,
             'rate_maps': self.rate_maps,
             'smoothed_rate_maps': self.smoothed_rate_maps,
-            'is_IEBC': self.is_IEBC,
-            'is_EBC': self.is_EBC,
+            'is_IEBC': self.is_IEBC.astype(int),
+            'is_EBC': self.is_EBC.astype(int),
         }
-        data_out = {**data_out, **self.save_props **self.inv_criteria_out}
+        data_out = {**data_out, **self.save_props, **self.inv_criteria_out}
         self.data_out = data_out
 
         return data_out
 
     def save_results(self, savepath):
 
-        fm2p.write_h5(savepath, self.data_out)
+        data_out = convert_bools_to_ints(self.data_out)
+
+        fm2p.write_h5(savepath, data_out)
 
 
 if __name__ == '__main__':
@@ -660,93 +698,3 @@ if __name__ == '__main__':
     bt.identify_responses(use_angle='head', use_light=True)
     bt.save_results(r'K:\Mini2P\250630_DMM_DMM037_ltdk\fm3\250630_DMM_DMM037_fm_03_EBC_results_v1.h5')
 
-# shift spikes by -2 frames
-
-# calculate allocentric head yaw
-# calculate allocentric pupil orientation
-
-# calculate all ray distances
-# shape will be (N_frames, N_rays)
-# 35 cm max distance
-# 2.5 cm distance bins
-# 120 3 deg bins
-# calculate bin center psitions
-
-### calc occupancy
-# init matrix as (N_angular_bins, N_distance bins), or (120, 14)
-
-# for each frame
-#   for each distance bin
-#     which bin does the distance fall onto, as a one-hot encoded vector
-
-### calc rate map
-# init matrix as (N_cells, N_cells, N_angular_bins, N_distance_bins), or (N_cells, N_cells, 120, 14)
-# for each cell
-#   for each frame
-#     make a mask of where distance > lower bound and distance < upper bound
-#     every bin that is occupied has its value incrimented by current spike rate
-# result should be (N_cells, n_frames, N_angular_bins, N_distance_bins)
-
-# smooth the rate maps (for visualization only)
-# to avoid edge effects, concatenate three copies of the rate map along the angular axis
-# i.e., np.vstack((rate_map, rate_map, rate_map))
-# using scipy.ndimage.gaussian_filter, smooth the rate map
-# then, slice the middle third of the smoothed rate map to get the final smoothed rate map
-
-# plot using pcolormesh
-
-### identify inverse responses
-# to identify reliable cells, first identify the inverse egocentric boundary cells
-# invert all rate maps as (max - map + min)
-
-# (1) measure skewness of rate map
-# scipy.stats.skew(ratemap.flatten())
-# if skew is negative (few low values nad alot of high values), this means its an IEBC
-
-# (2) measure the dispersion of the rate map
-# convert spatial bins to cartesian coordinates in egocentric space
-# which bins are in the top 10% of the map?
-# look through all combinations of spatial bins.
-# if inverted dispersion is lower than normal dispersion, it's an IEBC
-
-# (3) measure receptive field size
-# to avoid edge effects, pad each end of the angular axis with the other end of the angular axis
-# find largest continuous area of spatial bins using scipy.ndimage.label with 8-connectivity (can be diagonal)
-# by initiating a 3x3 matrix
-# then, drop the wrap around
-# retain spatial bins above 50th percentile.
-# calculate the percent of the ratemap spanned by the recpetive field
-# make a copy of the rate map, invert it, and repeat above steps
-# if the inverted RF size is < normal RF size, it's an IEBC
-
-# if two of these criteria were met, call it an IEBC
-
-
-### identify the EBCs
-# implement equation from page 15 of andy's paper to calculate mean resultant
-# how concentrated are points on a ciruclar scale?
-# (Sum_{ang}^{n} \Sum_{dist}^{m} F_{ang, dist} * e^{8*ang}) / (N*M) where F is the
-# firing rate in a given orientation-by-distance bin, n is the num angular bins, m is
-# the number of distance bins, e is the euler constant, and i is the imaginary constant
-# mean resultant length is the abs(MR)
-# mean resultant angle is the arctan2(np.imag(MR), np.real(MR)), then add 2*pi to avoid negative angles
-
-# to get preferred distance, find argmax across distance bins for each angular bin
-
-# for c in cells:
-#   if it's an IEBC, invert the rate map before continuing
-#   calculate the mean resultant length and angle
-
-#   (1) correlation coefficient criteria
-#   split the recording into 20 chunks, randomly sort them into two groups, and calculate the EBC rate map for each half.
-#   then, calculate the pearson correlation coefficient between the two rate maps
-#   if the correlation coefficient is above 0.6, it's an EBC
-
-#   (2) mean resultant criteria
-#   for 100 iterations, randomly shift the spikes relative to behavior data by at least 10% and less than 90% of the total number of frames
-#   for each shift, calculate the MRL.
-#   get the 99th percentile of the MRLs.
-#   see if the MRL of the original rate map is above the 99th percentile of the shuffled MRLs.
-#   if it is, it's an EBC
-
-# Repeat all of this for the light and dark conditions of the recording, seperately
