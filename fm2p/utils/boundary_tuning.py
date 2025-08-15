@@ -96,8 +96,10 @@ class BoundaryTuning:
     def calc_allo_pupil(self):
         """ Calculate the pupil orientation in allocentric space from a head direction of 0 deg = facing rightwards.
         """
-        self.pupil_ang = (((self.data['head_yaw_deg'][:-1] + self.data['theta_interp']) + 180) % 360) - 180
-        self.pupil_ang = np.append(self.pupil_ang, self.pupil_ang[-1])
+        # self.pupil_ang = (((self.data['head_yaw_deg'][:-1] + self.data['theta_interp']) + 180) % 360) - 180
+        # self.pupil_ang = np.append(self.pupil_ang, self.pupil_ang[-1])
+
+        self.pupil_ang = self.data['retinocentric']
 
     def get_ray_distances(self, angle='head'):
         """ Get the distance at each ray to the closest wall.
@@ -124,7 +126,13 @@ class BoundaryTuning:
 
         x_trace = x_trace[self.useinds]
         y_trace = y_trace[self.useinds]
-        angle_trace = angle_trace[:-1][self.useinds]
+
+        if len(self.useinds) > len(angle_trace):
+            angle_trace = np.append(angle_trace, angle_trace[-1])
+        elif len(self.useinds) < len(angle_trace):
+            angle_trace = angle_trace[:-1]
+        
+        angle_trace = angle_trace[self.useinds]
 
         angle_trace = np.deg2rad(angle_trace)
 

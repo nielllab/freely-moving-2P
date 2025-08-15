@@ -1,13 +1,15 @@
+
+
+
 import argparse
 import os
-
 
 import fm2p
 
 
 def boundary():
 
-    skip_classification = True
+    skip_classification = False
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-cfg', '--cfg', type=str, default=None)
@@ -44,10 +46,10 @@ def boundary():
         savedir = os.path.split(preproc_path)[0]
         basename = os.path.split(preproc_path)[1][:-11]
 
-        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v2.h5'.format(basename))
-        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v2.h5'.format(basename))
-        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v2.h5'.format(basename))
-        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v2.h5'.format(basename))
+        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v4.h5'.format(basename))
+        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v4.h5'.format(basename))
+        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v4.h5'.format(basename))
+        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v4.h5'.format(basename))
 
         print('  -> Starting to analyze egocentric tuning in light condition.')
         ltego_bt = fm2p.BoundaryTuning(preproc_data)
