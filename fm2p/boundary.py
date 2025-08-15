@@ -7,6 +7,8 @@ import fm2p
 
 def boundary():
 
+    skip_classification = True
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-cfg', '--cfg', type=str, default=None)
     args = parser.parse_args()
@@ -42,32 +44,32 @@ def boundary():
         savedir = os.path.split(preproc_path)[0]
         basename = os.path.split(preproc_path)[1][:-11]
 
-        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego'.format(basename))
-        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego'.format(basename))
-        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret'.format(basename))
-        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret'.format(basename))
+        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v2.h5'.format(basename))
+        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v2.h5'.format(basename))
+        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v2.h5'.format(basename))
+        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v2.h5'.format(basename))
 
         print('  -> Starting to analyze egocentric tuning in light condition.')
         ltego_bt = fm2p.BoundaryTuning(preproc_data)
-        ltego_bt.identify_responses(use_angle='head', use_light=True)
+        ltego_bt.identify_responses(use_angle='head', use_light=True, skip_classification=skip_classification)
         ltego_bt.save_results(light_head_savepath)
         del ltego_bt
 
         print('  -> Starting to analyze egocentric tuning in dark condition.')
         dkego_bt = fm2p.BoundaryTuning(preproc_data)
-        dkego_bt.identify_responses(use_angle='head', use_dark=True)
+        dkego_bt.identify_responses(use_angle='head', use_dark=True, skip_classification=skip_classification)
         dkego_bt.save_results(dark_head_savepath)
         del dkego_bt
 
         print('  -> Starting to analyze retinocentric tuning in light condition.')
         ltret_bt = fm2p.BoundaryTuning(preproc_data)
-        ltret_bt.identify_responses(use_angle='eye', use_light=True)
+        ltret_bt.identify_responses(use_angle='pupil', use_light=True, skip_classification=skip_classification)
         ltret_bt.save_results(light_eye_savepath)
         del ltret_bt
 
         print('  -> Starting to analyze retinocentric tuning in dark condition.')
         dkret_bt = fm2p.BoundaryTuning(preproc_data)
-        dkret_bt.identify_responses(use_angle='eye', use_dark=True)
+        dkret_bt.identify_responses(use_angle='pupil', use_dark=True, skip_classification=skip_classification)
         dkret_bt.save_results(dark_eye_savepath)
         del dkret_bt
 

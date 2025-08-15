@@ -82,8 +82,8 @@ class BoundaryTuning:
         self.data = preprocessed_data
 
         self.ray_width = 3 # deg
-        self.max_dist = 35 # cm
-        self.dist_bin_size = 2.5 # cm
+        self.max_dist = 26 # cm
+        self.dist_bin_size = 2. # cm
 
         self.head_ang = None
         self.pupil_ang = None
@@ -96,8 +96,8 @@ class BoundaryTuning:
     def calc_allo_pupil(self):
         """ Calculate the pupil orientation in allocentric space from a head direction of 0 deg = facing rightwards.
         """
-        pupil_angle = np.deg2rad(self.data['theta_interp'])
-        self.pupil_ang = (self.head_ang + pupil_angle) % (2 * np.pi)
+        self.pupil_ang = (((self.data['head_yaw_deg'][:-1] + self.data['theta_interp']) + 180) % 360) - 180
+        self.pupil_ang = np.append(self.pupil_ang, self.pupil_ang[-1])
 
     def get_ray_distances(self, angle='head'):
         """ Get the distance at each ray to the closest wall.
@@ -623,16 +623,16 @@ class BoundaryTuning:
 
         return self.save_props
     
-    def identify_responses(self, use_angle='head', use_light=False, use_dark=False):
+    def identify_responses(self, use_angle='head', use_light=False, use_dark=False, skip_classification=False):
         
             
         if use_light:
-            assert self.data['ltdk']==True, 'Data must be preprocessed with light/dark conditions.'
+            assert self.data['ltdk']==True, 'Data must be preprocessed with light conditions.'
             print('  -> Calculating boundary responses for light condition.')
             useinds = self.data['ltdk_state_vec'].copy() == 1
 
         elif use_dark:
-            assert self.data['ltdk'] is True, 'Data must be preprocessed with light/dark conditions.'
+            assert self.data['ltdk']==True, 'Data must be preprocessed with dark conditions.'
             print('  -> Calculating boundary responses for dark condition.')
             useinds = self.data['ltdk_state_vec'].copy() == 0
 
@@ -665,20 +665,31 @@ class BoundaryTuning:
         print('  -> Smoothing rate maps (just for later visualization).')
         _ = self.smooth_rate_maps()
 
-        print('  -> Identifying inverse boundary cells.')
-        _ = self.identify_inverse_responses()
+        if not skip_classification:
+            print('  -> Identifying inverse boundary cells.')
+            _ = self.identify_inverse_responses()
 
-        print('  -> Identifying boundary cells.')
-        _ = self.identify_boundary_cells()
+            print('  -> Identifying boundary cells.')
+            _ = self.identify_boundary_cells()
 
         data_out = {
             'occupancy': self.occupancy,
             'rate_maps': self.rate_maps,
             'smoothed_rate_maps': self.smoothed_rate_maps,
-            'is_IEBC': self.is_IEBC.astype(int),
-            'is_EBC': self.is_EBC.astype(int),
+            'ray_width': self.ray_width,
+            'max_dist': self.max_dist,
+            'dist_bin_size': self.dist_bin_size,
+            'bin_dist_edges': self.dist_bin_edges,
+            'dist_bin_cents': self.dist_bin_cents,
+            'ray_distances': self.ray_distances
         }
-        data_out = {**data_out, **self.save_props, **self.inv_criteria_out}
+        if not skip_classification:
+            final_clas = {
+                'is_IEBC': self.is_IEBC.astype(int),
+                'is_EBC': self.is_EBC.astype(int)
+            }
+            data_out = {**data_out, **self.save_props, **self.inv_criteria_out, **final_clas}
+
         self.data_out = data_out
 
         return data_out
