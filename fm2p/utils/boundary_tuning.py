@@ -217,8 +217,9 @@ class BoundaryTuning:
                     # after these checks are passed, calculate the intersection coordinates
                     intersection = (start + np.outer(t, vector)).flatten()
 
-                    # check if the intersection is really in the direction of the ray
-                    if np.all(np.dot(intersection - np.array([x_trace, y_trace]).T, ray_vec) < 0):
+                    # check if the intersection is really in the direction of the ray (from current frame position)
+                    to_intersection = intersection - np.array([x_trace[fr], y_trace[fr]])
+                    if np.dot(to_intersection, ray_vec.flatten()) < 0:
                         continue
 
                     intersections.append(intersection)
@@ -242,20 +243,23 @@ class BoundaryTuning:
 
         return self.ray_distances
     
-    def calc_occupancy(self):
+    def calc_occupancy(self, inds=None):
 
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
-        self.occupancy = np.zeros((N_angular_bins, N_distance_bins))
+        occupancy = np.zeros((N_angular_bins, N_distance_bins))
 
         for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
             dist_bin_end = dist_bin_start + self.dist_bin_size
             # create a mask of where the distance falls within the current distance bin
-            mask = (self.ray_distances >= dist_bin_start) & (self.ray_distances < dist_bin_end)
+            if inds is None:
+                mask = (self.ray_distances >= dist_bin_start) & (self.ray_distances < dist_bin_end)
+            else:
+                mask = (self.ray_distances[inds] >= dist_bin_start) & (self.ray_distances[inds] < dist_bin_end)
             # sum across frames to get occupancy for each angular bin
-            self.occupancy[:, d] = np.sum(mask, axis=0)
+            occupancy[:, d] = np.sum(mask, axis=0)
 
-        return self.occupancy
+        return occupancy
     
     def calc_rate_maps_mp(self):
 
@@ -505,7 +509,9 @@ class BoundaryTuning:
                     if (ray_distances[f, a] >= dist_bin_start) and (ray_distances[f, a] < dist_bin_end):
                         rate_map[a, d] += spikes[f]
 
-        rate_map /= self.occupancy + 1e-6
+        occupancy = self.calc_occupancy(inds=inds)
+
+        rate_map /= occupancy + 1e-6
 
         return rate_map
 
@@ -695,7 +701,7 @@ class BoundaryTuning:
         _ = self.get_ray_distances(angle=use_angle)
 
         print('  -> Calculating occupancy.')
-        _ = self.calc_occupancy()
+        self.occupancy = self.calc_occupancy(useinds=self.useinds)
 
         print('  -> Calculating rate maps.')
         _ = self.calc_rate_maps()
