@@ -16,6 +16,9 @@ Author: DMM, 2024
 """
 
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import os
 import yaml
 import json

@@ -8,7 +8,11 @@ from scipy.ndimage import label
 from tqdm import tqdm
 import multiprocessing
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import fm2p
+
 
 def convert_bools_to_ints(data):
     new_dict = {}
@@ -17,6 +21,8 @@ def convert_bools_to_ints(data):
             new_dict[key] = convert_bools_to_ints(value)  # recursive call
         elif (isinstance(value, bool)) or (isinstance(value, np.bool_)):
             new_dict[key] = int(value)
+        elif (isinstance(value, np.complex128)):
+            new_dict[key] = str(value)
         else:
             new_dict[key] = value
     return new_dict
@@ -87,6 +93,10 @@ class BoundaryTuning:
 
         self.head_ang = None
         self.pupil_ang = None
+
+        self.criteria_out = {}
+        for c in range(np.size(self.data['norm_spikes'],0)):
+            self.criteria_out['cell_{:03d}'.format(c)] = {}
     
     def calc_allo_yaw(self):
         """ Calculate the head yaw in allocentric space from a head direction of 0 deg = facing rightwards.
@@ -100,6 +110,9 @@ class BoundaryTuning:
         # self.pupil_ang = np.append(self.pupil_ang, self.pupil_ang[-1])
 
         self.pupil_ang = self.data['retinocentric']
+
+    def calc_ego(self):
+        self.ego_ang = self.data['egocentric']
 
     def get_ray_distances(self, angle='head'):
         """ Get the distance at each ray to the closest wall.
@@ -118,6 +131,10 @@ class BoundaryTuning:
             if  self.pupil_ang is None:
                 self.calc_allo_pupil()
             angle_trace = self.pupil_ang
+        elif angle == 'ego':
+            if self.pupil_ang is None:
+                self.calc_ego()
+            angle_trace = self.ego_ang
 
         x_trace = self.data['head_x'].copy() / self.data['pxls2cm']
         y_trace = self.data['head_y'].copy() / self.data['pxls2cm']
@@ -136,34 +153,23 @@ class BoundaryTuning:
 
         angle_trace = np.deg2rad(angle_trace)
 
-        x1 = np.nanmean([
-            self.data['arenaBL']['x'] / self.data['pxls2cm'],
-            self.data['arenaTL']['x'] / self.data['pxls2cm']
-        ])
-        x2 = np.nanmean([
-            self.data['arenaBR']['x'] / self.data['pxls2cm'],
-            self.data['arenaTR']['x'] / self.data['pxls2cm']
-        ])
-        y1 = np.nanmean([
-            self.data['arenaTL']['y'] / self.data['pxls2cm'],
-            self.data['arenaTR']['y'] / self.data['pxls2cm']
-        ])
-        y2 = np.nanmean([
-            self.data['arenaBL']['y'] / self.data['pxls2cm'],
-            self.data['arenaBR']['y'] / self.data['pxls2cm']
-        ])
+        # Use the actual arena corners (in cm) for wall definitions
+        BL = (self.data['arenaBL']['x'] / self.data['pxls2cm'], self.data['arenaBL']['y'] / self.data['pxls2cm'])
+        BR = (self.data['arenaBR']['x'] / self.data['pxls2cm'], self.data['arenaBR']['y'] / self.data['pxls2cm'])
+        TR = (self.data['arenaTR']['x'] / self.data['pxls2cm'], self.data['arenaTR']['y'] / self.data['pxls2cm'])
+        TL = (self.data['arenaTL']['x'] / self.data['pxls2cm'], self.data['arenaTL']['y'] / self.data['pxls2cm'])
 
         wall_entries = [
-            [x1, y1, x2, y1],
-            [x1, y1, x1, y2],
-            [x2, y1, x2, y2],
-            [x1, y2, x2, y2]
+            [BL[0], BL[1], BR[0], BR[1]],  # Bottom wall
+            [BR[0], BR[1], TR[0], TR[1]],  # Right wall
+            [TR[0], TR[1], TL[0], TL[1]],  # Top wall
+            [TL[0], TL[1], BL[0], BL[1]]   # Left wall
         ]
 
         rays_rad = np.zeros((N_frames, int(360 / self.ray_width)))
         for f in range(N_frames):
-            for r in range(int(360 / self.ray_width)):
-                rays_rad[f,r] = angle_trace[f] + np.deg2rad(r)
+            for r, ang in enumerate(np.arange(0, 360, self.ray_width)):
+                rays_rad[f,r] = angle_trace[f] + np.deg2rad(ang)
         
         self.ray_distances = np.zeros([
             np.size(rays_rad,0),
@@ -429,8 +435,6 @@ class BoundaryTuning:
     
     def identify_inverse_responses(self, inv_criteria_thresh=2):
 
-        criteria_out = {}
-
         N_cells = self.rate_maps.shape[0]
         self.is_IEBC = np.zeros(N_cells, dtype=bool)
 
@@ -447,18 +451,21 @@ class BoundaryTuning:
             if pass_count >= inv_criteria_thresh:
                 self.is_IEBC[c] = True
 
-            criteria_out['cell_{:03d}'.format(c)] = {
+            temp_dict = {
                 'skewness_val': skew_val,
                 'skewness_pass': int(skew_pass),
-                'dispersion_normal': normal_dispersion,
                 'dispersion_inverted': inverted_dispersion,
+                'dispersion_normal': normal_dispersion,
                 'dispersion_pass': int(disp_pass),
                 'rf_size_normal': normal_rf_size,
                 'rf_size_inverted': inverted_rf_size,
                 'rf_size_passes': int(rf_pass)
             }
-        
-        self.criteria_out = criteria_out
+
+            self.criteria_out['cell_{:03d}'.format(c)] = {
+                **self.criteria_out['cell_{:03d}'.format(c)],
+                **temp_dict
+            }
 
         return self.is_IEBC
     
@@ -666,8 +673,12 @@ class BoundaryTuning:
 
         self.useinds = useinds
 
-        # shift spike by -2 frames
-        self.data['norm_spikes'] = np.roll(self.data['norm_spikes'], -2, axis=1)
+        # was shited by -2 frames (spikes shifted as: [2, 3, 4, 0, 1])
+        # changed to shifted +2 frames on 8/18/25 (spikes shifted as [3, 4, 0, 1, 2])
+        # last version with -2 was _v5.h5; Now testing +2 with _v6_posroll.h5
+        # self.data['norm_spikes'] = np.roll(self.data['norm_spikes'], 2, axis=1)
+
+        self.useinds = self.useinds * (self.data['speed']>2.)
 
         # calculate potential angles
         if use_angle == 'head':
@@ -675,6 +686,9 @@ class BoundaryTuning:
 
         elif use_angle == 'pupil':
             self.calc_allo_pupil()
+
+        elif use_angle == 'ego':
+            self.calc_ego()
 
         # calculate all ray distances
         print('  -> Calculating ray distances.')

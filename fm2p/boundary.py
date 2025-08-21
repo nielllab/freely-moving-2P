@@ -4,12 +4,15 @@
 import argparse
 import os
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import fm2p
 
 
 def boundary():
 
-    skip_classification = False
+    skip_classification = True
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-cfg', '--cfg', type=str, default=None)
@@ -46,34 +49,56 @@ def boundary():
         savedir = os.path.split(preproc_path)[0]
         basename = os.path.split(preproc_path)[1][:-11]
 
-        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v4.h5'.format(basename))
-        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v4.h5'.format(basename))
-        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v4.h5'.format(basename))
-        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v4.h5'.format(basename))
+        saveflag = 'dropslow'
+        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v6_{}.h5'.format(basename, saveflag))
+        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v6_{}.h5'.format(basename, saveflag))
+        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v6_{}.h5'.format(basename, saveflag))
+        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v6_{}.h5'.format(basename, saveflag))
+        light_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_ltegopillar_v6_{}.h5'.format(basename, saveflag))
+        dark_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_dkegopillar_v6_{}.h5'.format(basename, saveflag))
 
         print('  -> Starting to analyze egocentric tuning in light condition.')
-        ltego_bt = fm2p.BoundaryTuning(preproc_data)
-        ltego_bt.identify_responses(use_angle='head', use_light=True, skip_classification=skip_classification)
-        ltego_bt.save_results(light_head_savepath)
-        del ltego_bt
+        lthead_bt = fm2p.BoundaryTuning(preproc_data)
+        lthead_bt.identify_responses(use_angle='head', use_light=True, skip_classification=skip_classification)
+        print('Writing {}'.format(os.path.split(light_head_savepath)[1]))
+        lthead_bt.save_results(light_head_savepath)
+        del lthead_bt
 
-        print('  -> Starting to analyze egocentric tuning in dark condition.')
-        dkego_bt = fm2p.BoundaryTuning(preproc_data)
-        dkego_bt.identify_responses(use_angle='head', use_dark=True, skip_classification=skip_classification)
-        dkego_bt.save_results(dark_head_savepath)
-        del dkego_bt
+        # print('  -> Starting to analyze egocentric tuning in dark condition.')
+        # dkhead_bt = fm2p.BoundaryTuning(preproc_data)
+        # dkhead_bt.identify_responses(use_angle='head', use_dark=True, skip_classification=skip_classification)
+        # print('Writing {}'.format(os.path.split(dark_head_savepath)[1]))
+        # dkhead_bt.save_results(dark_head_savepath)
+        # del dkhead_bt
 
-        print('  -> Starting to analyze retinocentric tuning in light condition.')
-        ltret_bt = fm2p.BoundaryTuning(preproc_data)
-        ltret_bt.identify_responses(use_angle='pupil', use_light=True, skip_classification=skip_classification)
-        ltret_bt.save_results(light_eye_savepath)
-        del ltret_bt
+        # print('  -> Starting to analyze retinocentric tuning in light condition.')
+        # ltret_bt = fm2p.BoundaryTuning(preproc_data)
+        # ltret_bt.identify_responses(use_angle='pupil', use_light=True, skip_classification=skip_classification)
+        # print('Writing {}'.format(os.path.split(light_eye_savepath)[1]))
+        # ltret_bt.save_results(light_eye_savepath)
+        # del ltret_bt
 
-        print('  -> Starting to analyze retinocentric tuning in dark condition.')
-        dkret_bt = fm2p.BoundaryTuning(preproc_data)
-        dkret_bt.identify_responses(use_angle='pupil', use_dark=True, skip_classification=skip_classification)
-        dkret_bt.save_results(dark_eye_savepath)
-        del dkret_bt
+        # print('  -> Starting to analyze retinocentric tuning in dark condition.')
+        # dkret_bt = fm2p.BoundaryTuning(preproc_data)
+        # dkret_bt.identify_responses(use_angle='pupil', use_dark=True, skip_classification=skip_classification)
+        # print('Writing {}'.format(os.path.split(dark_eye_savepath)[1]))
+        # dkret_bt.save_results(dark_eye_savepath)
+        # del dkret_bt
+
+        # print('  -> Starting to analyze egocentric pillar tuning in light condition.')
+        # ltego_bt = fm2p.BoundaryTuning(preproc_data)
+        # ltego_bt.identify_responses(use_angle='ego', use_light=True, skip_classification=skip_classification)
+        # print('Writing {}'.format(os.path.split(light_ego_savepath)[1]))
+        # ltego_bt.save_results(light_ego_savepath)
+        # del ltego_bt
+
+        # print('  -> Starting to analyze egocentric pillar tuning in dark condition.')
+        # dkego_bt = fm2p.BoundaryTuning(preproc_data)
+        # dkego_bt.identify_responses(use_angle='ego', use_dark=True, skip_classification=skip_classification)
+        # print('Writing {}'.format(os.path.split(dark_ego_savepath)[1]))
+        # dkego_bt.save_results(dark_ego_savepath)
+        # del dkego_bt
+
 
 if __name__ == '__main__':
 

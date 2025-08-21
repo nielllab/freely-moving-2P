@@ -14,6 +14,9 @@ Author: DMM, May 2025
 """
 
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import numpy as np
 from scipy import io
 import itertools
