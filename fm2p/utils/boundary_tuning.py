@@ -1,5 +1,25 @@
+"""
+Boundary tuning analysis tools for freely-moving 2P experiments.
 
+This module provides the `BoundaryTuning` class and supporting functions for calculating
+rate maps, occupancy, and classifying boundary cells (EBC/IEBC) in rodent navigation experiments.
 
+Classes:
+    BoundaryTuning: Main class for boundary cell analysis.
+
+Functions:
+    convert_bools_to_ints(data): Recursively convert bools in a dict to ints (for HDF5 saving).
+    rate_map_mp(...): Multiprocessing helper for rate map calculation.
+    calc_MRL_mp(...): Multiprocessing helper for mean resultant length.
+    calc_shfl_mean_resultant_mp(...): Multiprocessing helper for shuffled MRL.
+
+Example usage:
+    >>> from fm2p.utils.boundary_tuning import BoundaryTuning
+    >>> bt = BoundaryTuning(preprocessed_data)
+    >>> bt.identify_responses(use_angle='head')
+    >>> print(bt.data_out['is_EBC'])
+
+"""
 
 import numpy as np
 from scipy.ndimage import gaussian_filter
@@ -15,6 +35,21 @@ import fm2p
 
 
 def convert_bools_to_ints(data):
+    """
+    Recursively convert all boolean values in a dictionary to integers.
+    Useful for saving data to HDF5, which does not support bools.
+
+    Parameters
+    ----------
+    data : dict
+        Input dictionary (possibly nested).
+
+    Returns
+    -------
+    dict
+        Dictionary with all bools replaced by ints.
+    """
+
     new_dict = {}
     for key, value in data.items():
         if isinstance(value, dict):
@@ -29,7 +64,29 @@ def convert_bools_to_ints(data):
 
 
 def rate_map_mp(spike_rate, occupancy, ray_distances, ray_width, dist_bin_edges, dist_bin_size):
-    """ Calculate rate map (for multiprocessing only)
+    """
+    Calculate a 2D rate map for a single cell using spike rates and occupancy.
+    Used for multiprocessing.
+
+    Parameters
+    ----------
+    spike_rate : np.ndarray
+        1D array of spike rates for each frame.
+    occupancy : np.ndarray
+        2D array of occupancy counts (angular x distance bins).
+    ray_distances : np.ndarray
+        2D array of distances to wall for each frame and angle.
+    ray_width : float
+        Width of each angular bin (degrees).
+    dist_bin_edges : np.ndarray
+        1D array of distance bin edges (cm).
+    dist_bin_size : float
+        Size of each distance bin (cm).
+
+    Returns
+    -------
+    rate_map : np.ndarray
+        2D array (angular x distance) of firing rates.
     """
 
     N_angular_bins = int(360 / ray_width)
@@ -50,7 +107,23 @@ def rate_map_mp(spike_rate, occupancy, ray_distances, ray_width, dist_bin_edges,
 
 
 def calc_MRL_mp(ratemap, ray_width, dist_bin_cents):
-    """ Calculate mean resultant length (for multiprocessing only)
+    """
+    Calculate the mean resultant length (MRL) of a 2D rate map.
+    Used for multiprocessing.
+
+    Parameters
+    ----------
+    ratemap : np.ndarray
+        2D array (angular x distance) of firing rates.
+    ray_width : float
+        Width of each angular bin (degrees).
+    dist_bin_cents : np.ndarray
+        1D array of distance bin centers (cm).
+
+    Returns
+    -------
+    mean_resultant_length : float
+        The mean resultant length of the rate map.
     """
 
     N_angular_bins, N_distance_bins = ratemap.shape
@@ -69,6 +142,36 @@ def calc_MRL_mp(ratemap, ray_width, dist_bin_cents):
 
 def calc_shfl_mean_resultant_mp(spikes, useinds, occupancy, ray_distances, ray_width,
                              dist_bin_edges, dist_bin_size, dist_bin_cents, is_IEBC):
+    """
+    Calculate the mean resultant length (MRL) for a shuffled spike train.
+    Used for multiprocessing shuffling.
+
+    Parameters
+    ----------
+    spikes : np.ndarray
+        1D array of spike counts.
+    useinds : np.ndarray
+        Boolean mask of frames to use.
+    occupancy : np.ndarray
+        2D array of occupancy counts.
+    ray_distances : np.ndarray
+        2D array of distances to wall.
+    ray_width : float
+        Width of each angular bin (degrees).
+    dist_bin_edges : np.ndarray
+        1D array of distance bin edges (cm).
+    dist_bin_size : float
+        Size of each distance bin (cm).
+    dist_bin_cents : np.ndarray
+        1D array of distance bin centers (cm).
+    is_IEBC : bool
+        Whether the cell is an inverse EBC (invert the map).
+
+    Returns
+    -------
+    shf_mrl : float
+        Mean resultant length for the shuffled map.
+    """
 
     N_frames = np.sum(useinds)
 
@@ -83,7 +186,34 @@ def calc_shfl_mean_resultant_mp(spikes, useinds, occupancy, ray_distances, ray_w
 
 
 class BoundaryTuning:
+    """
+    Main class for boundary cell analysis in freely-moving 2P experiments.
+
+    Methods
+    -------
+    calc_allo_yaw(): Compute allocentric head and pupil angles.
+    calc_ego(): Compute egocentric angles.
+    get_ray_distances(angle): Compute distances to wall for each frame and angle.
+    calc_occupancy(inds): Compute occupancy map for given indices.
+    calc_rate_maps_mp(): Compute rate maps using multiprocessing.
+    calc_rate_maps(use_mp): Compute rate maps (optionally with multiprocessing).
+    smooth_rate_maps(): Smooth all rate maps for visualization.
+    smooth_map_pair(map1, map2): Smooth two arbitrary rate maps.
+    identify_inverse_responses(): Classify inverse EBCs (IEBCs).
+    identify_boundary_cells(): Classify EBCs using split-half and MRL criteria.
+    identify_responses(...): Full pipeline for boundary cell analysis.
+    save_results(savepath): Save results to HDF5.
+    """
+
     def __init__(self, preprocessed_data):
+        """
+        Initialize BoundaryTuning object with preprocessed data.
+
+        Parameters
+        ----------
+        preprocessed_data : dict
+            Dictionary containing all required behavioral and spike data.
+        """
 
         self.data = preprocessed_data
 
@@ -99,36 +229,42 @@ class BoundaryTuning:
             self.criteria_out['cell_{:03d}'.format(c)] = {}
     
     def calc_allo_yaw(self):
-        """ Calculate the head yaw in allocentric space from a head direction of 0 deg = facing rightwards.
+        """
+        Compute allocentric head and pupil angles from preprocessed data.
+        Sets self.head_ang and self.pupil_ang.
         """
         self.head_ang = self.data['head_yaw_deg']
-
-    def calc_allo_pupil(self):
-        """ Calculate the pupil orientation in allocentric space from a head direction of 0 deg = facing rightwards.
-        """
-        # self.pupil_ang = (((self.data['head_yaw_deg'][:-1] + self.data['theta_interp']) + 180) % 360) - 180
-        # self.pupil_ang = np.append(self.pupil_ang, self.pupil_ang[-1])
-
         self.pupil_ang = self.data['retinocentric']
 
     def calc_ego(self):
+        """
+        Compute egocentric angles from preprocessed data.
+        Sets self.ego_ang.
+        """
         self.ego_ang = self.data['egocentric']
 
     def get_ray_distances(self, angle='head'):
-        """ Get the distance at each ray to the closest wall.
-        
+        """
+        Compute the distance from the animal to the closest wall for each frame and angle.
+
         Parameters
         ----------
-        angle : str
-            Which angle to use for the 
+        angle : str, optional
+            Which angle to use ('head', 'pupil', or 'ego'). Default is 'head'.
+
+        Returns
+        -------
+        ray_distances : np.ndarray
+            2D array (frames x angles) of distances to the closest wall.
         """
 
+        # Select the angle trace based on the requested reference frame
         if angle == 'head':
             if self.head_ang is None:
                 self.calc_allo_yaw()
             angle_trace = self.head_ang
         elif angle == 'pupil':
-            if  self.pupil_ang is None:
+            if self.pupil_ang is None:
                 self.calc_allo_pupil()
             angle_trace = self.pupil_ang
         elif angle == 'ego':
@@ -139,18 +275,18 @@ class BoundaryTuning:
         x_trace = self.data['head_x'].copy() / self.data['pxls2cm']
         y_trace = self.data['head_y'].copy() / self.data['pxls2cm']
 
-        N_frames = np.sum(self.useinds)
+        use_inds = np.where(self.useinds)[0]
+        N_frames = len(use_inds)
 
-        x_trace = x_trace[self.useinds]
-        y_trace = y_trace[self.useinds]
+        x_trace = x_trace[use_inds]
+        y_trace = y_trace[use_inds]
 
-        if len(self.useinds) > len(angle_trace):
+        if len(use_inds) > len(angle_trace):
             angle_trace = np.append(angle_trace, angle_trace[-1])
-        elif len(self.useinds) < len(angle_trace):
+        elif len(use_inds) < len(angle_trace):
             angle_trace = angle_trace[:-1]
-        
-        angle_trace = angle_trace[self.useinds]
 
+        angle_trace = angle_trace[use_inds]
         angle_trace = np.deg2rad(angle_trace)
 
         # Use the actual arena corners (in cm) for wall definitions
@@ -244,16 +380,30 @@ class BoundaryTuning:
         return self.ray_distances
     
     def calc_occupancy(self, inds=None):
-        
-        # Ensure that inds, if provided, is valid and within bounds
-        if inds is not None:
-            if np.any(np.array(inds) >= self.ray_distances.shape[0]) or np.any(np.array(inds) < 0):
-                raise ValueError('Indices for occupancy calculation are out of bounds.')
+        """
+        Calculate the occupancy map (number of samples per angular x distance bin).
 
+        Parameters
+        ----------
+        inds : array-like or None, optional
+            Indices of frames to include. If None, use all frames.
+            Can be integer indices or a boolean mask.
+
+        Returns
+        -------
+        occupancy : np.ndarray
+            2D array (angular x distance) of occupancy counts.
+        """
+        # Convert boolean mask to integer indices if needed
+        if inds is not None:
+            inds = np.asarray(inds)
+            if inds.dtype == bool:
+                inds = np.where(inds)[0]
+            if np.any(inds >= self.ray_distances.shape[0]) or np.any(inds < 0):
+                raise ValueError('Indices for occupancy calculation are out of bounds.')
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
         occupancy = np.zeros((N_angular_bins, N_distance_bins))
-
         for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
             dist_bin_end = dist_bin_start + self.dist_bin_size
             # create a mask of where the distance falls within the current distance bin
@@ -263,11 +413,17 @@ class BoundaryTuning:
                 mask = (self.ray_distances[inds] >= dist_bin_start) & (self.ray_distances[inds] < dist_bin_end)
             # sum across frames to get occupancy for each angular bin
             occupancy[:, d] = np.sum(mask, axis=0)
-
         return occupancy
     
     def calc_rate_maps_mp(self):
+        """
+        Calculate rate maps for all cells using multiprocessing for speed.
 
+        Returns
+        -------
+        rate_maps : np.ndarray
+            3D array (cells x angular x distance) of firing rates.
+        """
         nCells = np.size(self.data['norm_spikes'], 0)
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
@@ -287,7 +443,7 @@ class BoundaryTuning:
             pool.apply_async(
                 rate_map_mp,
                 args=(
-                    spikes[cell_num,:],
+                    spikes[cell_num, :],
                     self.occupancy,
                     self.ray_distances,
                     self.ray_width,
@@ -302,7 +458,7 @@ class BoundaryTuning:
         self.rate_maps = np.zeros((nCells, N_angular_bins, N_distance_bins))
 
         for c, rmap in enumerate(mp_outputs):
-            self.rate_maps[c,:,:] = rmap
+            self.rate_maps[c, :, :] = rmap
 
         pbar.close()
         pool.close()
@@ -310,7 +466,20 @@ class BoundaryTuning:
         return self.rate_maps
     
     def calc_rate_maps(self, use_mp=True):
+        """
+        Calculate rate maps for all cells.
+        Optionally use multiprocessing for speed.
 
+        Parameters
+        ----------
+        use_mp : bool, optional
+            Whether to use multiprocessing (default True).
+
+        Returns
+        -------
+        rate_maps : np.ndarray
+            3D array (cells x angular x distance) of firing rates.
+        """
         if use_mp is True:
             return self.calc_rate_maps_mp()
 
@@ -323,7 +492,7 @@ class BoundaryTuning:
         self.rate_maps = np.zeros((N_cells, N_angular_bins, N_distance_bins))
 
         for c in tqdm(range(N_cells)):
-            spike_rate = spikes[c,:]
+            spike_rate = spikes[c, :]
             for f in range(len(spike_rate)):
                 for a, ang in enumerate(np.arange(0, 360, self.ray_width)):
                     for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
@@ -331,23 +500,31 @@ class BoundaryTuning:
                         if (self.ray_distances[f, a] >= dist_bin_start) and (self.ray_distances[f, a] < dist_bin_end):
                             self.rate_maps[c, a, d] += spike_rate[f]
 
-            self.rate_maps[c,:,:] /= self.occupancy + 1e-6  # avoid division by zero
+            self.rate_maps[c, :, :] /= self.occupancy + 1e-6  # avoid division by zero
 
         return self.rate_maps
     
     def smooth_rate_maps(self):
+        """
+        Smooth all rate maps using a Gaussian filter for visualization.
+        Handles angular wraparound by padding.
 
+        Returns
+        -------
+        smoothed_rate_maps : np.ndarray
+            3D array (cells x angular x distance) of smoothed rates.
+        """
         smoothed_rate_maps = self.rate_maps.copy()
 
         for c in range(self.rate_maps.shape[0]):
             # pad the rate map by concatenating three copies along the angular axis
-            temp_padded = np.vstack((smoothed_rate_maps[c,:,:], smoothed_rate_maps[c,:,:], smoothed_rate_maps[c,:,:]))
+            temp_padded = np.vstack((smoothed_rate_maps[c, :, :], smoothed_rate_maps[c, :, :], smoothed_rate_maps[c, :, :]))
             # smooth the padded rate map
             # TODO: try sigma shapes that are not symetric (i.e., smooth more along angles than i do along distance axis)
             temp_smoothed = gaussian_filter(temp_padded, sigma=1)
 
             # slice the middle third to get the final smoothed rate map
-            smoothed_rate_maps[c,:,:] = temp_smoothed[smoothed_rate_maps.shape[1]:2*smoothed_rate_maps.shape[1], :]
+            smoothed_rate_maps[c, :, :] = temp_smoothed[smoothed_rate_maps.shape[1]:2*smoothed_rate_maps.shape[1], :]
 
         self.smoothed_rate_maps = smoothed_rate_maps
         return self.smoothed_rate_maps
@@ -356,6 +533,16 @@ class BoundaryTuning:
         """
         Smooth two arbitrary rate maps using the same logic as smooth_rate_maps,
         but without modifying self.rate_maps.
+
+        Parameters
+        ----------
+        map1, map2 : np.ndarray
+            2D rate maps to smooth (angular x distance).
+
+        Returns
+        -------
+        smoothed_map1, smoothed_map2 : np.ndarray
+            Smoothed versions of the input maps.
         """
         from scipy.ndimage import gaussian_filter
         smoothed_maps = []
@@ -367,15 +554,27 @@ class BoundaryTuning:
         return smoothed_maps[0], smoothed_maps[1]
     
     def _invert_ratemap(self, ratemap):
+        """
+        Invert a rate map (for IEBC classification).
+        Returns max - map + min.
+        """
         return np.max(ratemap) - ratemap + np.min(ratemap)
-    
+
+
     def _measure_skewness(self, ratemap):
+        """
+        Compute skewness of the rate map and test if it is negative.
+        Returns skew value and pass/fail boolean.
+        """
         skew_val = skew(ratemap.flatten())
         passes = skew_val < 0.
         return skew_val, passes
-    
+
     def _calc_dispersion(self, ratemap):
-        # convert spatial bins to cartesian coordinates in egocentric space
+        """
+        Calculate the spatial dispersion of the top 10% bins in the rate map.
+        Returns mean distance from centroid.
+        """
         N_angular_bins, N_distance_bins = ratemap.shape
         angs_rad = np.deg2rad(np.arange(0, 360, self.ray_width))
         dist_cents = self.dist_bin_cents
@@ -411,7 +610,10 @@ class BoundaryTuning:
         return dispersion
     
     def _measure_dispursion(self, ratemap):
-
+        """
+        Compare dispersion of normal and inverted rate maps.
+        Returns both dispersions and pass/fail boolean.
+        """
         normal_dispersion = self._calc_dispersion(ratemap)
         inv_ratemap = self._invert_ratemap(ratemap)
         inverted_dispersion = self._calc_dispersion(inv_ratemap)
@@ -421,6 +623,10 @@ class BoundaryTuning:
         return normal_dispersion, inverted_dispersion, passes
     
     def _calc_receptive_field_size(self, ratemap):
+        """
+        Calculate the size of the largest connected component above median in the rate map.
+        Returns fraction of total map size.
+        """
         # pad the angular axis with first and last columns to avoid edge effects
         padded_ratemap = np.vstack((ratemap[-1,:], ratemap, ratemap[0,:]))
         threshold = np.percentile(padded_ratemap, 50)
@@ -447,7 +653,10 @@ class BoundaryTuning:
         return receptive_field_size
     
     def _measure_receptive_field_size(self, ratemap):
-        
+        """
+        Compare receptive field size of normal and inverted rate maps.
+        Returns both sizes and pass/fail boolean.
+        """
         normal_rf_size = self._calc_receptive_field_size(ratemap)
         inv_ratemap = self._invert_ratemap(ratemap)
         inverted_rf_size = self._calc_receptive_field_size(inv_ratemap)
@@ -457,12 +666,25 @@ class BoundaryTuning:
         return normal_rf_size, inverted_rf_size, passes
     
     def identify_inverse_responses(self, inv_criteria_thresh=2):
+        """
+        Classify cells as inverse EBCs (IEBCs) based on skewness, dispersion, and receptive field size.
+
+        Parameters
+        ----------
+        inv_criteria_thresh : int, optional
+            Number of criteria that must be met to classify as IEBC (default 2).
+
+        Returns
+        -------
+        is_IEBC : np.ndarray
+            Boolean array indicating which cells are IEBCs.
+        """
 
         N_cells = self.rate_maps.shape[0]
         self.is_IEBC = np.zeros(N_cells, dtype=bool)
 
         for c in tqdm(range(N_cells)):
-            ratemap = self.rate_maps[c,:,:]
+            ratemap = self.rate_maps[c, :, :]
 
             skew_val, skew_pass = self._measure_skewness(ratemap)
 
@@ -493,6 +715,23 @@ class BoundaryTuning:
         return self.is_IEBC
     
     def _calc_mean_resultant(self, ratemap):
+        """
+        Calculate the mean resultant vector, length, and angle for a rate map.
+
+        Parameters
+        ----------
+        ratemap : np.ndarray
+            2D array (angular x distance) of firing rates.
+
+        Returns
+        -------
+        mr : complex
+            Mean resultant vector (complex value).
+        mean_resultant_length : float
+            Length of the mean resultant vector.
+        mean_resultant_angle : float
+            Angle of the mean resultant vector (radians, [0, 2pi]).
+        """
 
         N_angular_bins, N_distance_bins = ratemap.shape
         angs_rad = np.deg2rad(np.arange(0, 360, self.ray_width))
@@ -507,13 +746,27 @@ class BoundaryTuning:
         mean_resultant_angle = np.arctan2(np.imag(mr), np.real(mr))
 
         if mean_resultant_angle < 0:
-            mean_resultant_angle += 2*np.pi
+            mean_resultant_angle += 2 * np.pi
 
         return mr, mean_resultant_length, mean_resultant_angle
 
 
     def _calc_single_ratemap_subsetting(self, c, inds):
+        """
+        Calculate a rate map for a single cell using only a subset of frames.
 
+        Parameters
+        ----------
+        c : int
+            Cell index.
+        inds : array-like
+            Indices of frames to use.
+
+        Returns
+        -------
+        rate_map : np.ndarray
+            2D array (angular x distance) of firing rates for the subset.
+        """
         spikes = self.data['norm_spikes'][c, inds]
         ray_distances = self.ray_distances[inds, :]
 
@@ -537,7 +790,27 @@ class BoundaryTuning:
 
 
     def _calc_correlation_across_split(self, c, ncnk=20, corr_thresh=0.6):
-        
+        """
+        Calculate split-half reliability for a cell's rate map.
+        Splits data into chunks, shuffles, and compares two halves.
+        Smooths both split maps before computing correlation.
+
+        Parameters
+        ----------
+        c : int
+            Cell index.
+        ncnk : int, optional
+            Number of chunks to split data into (default 20).
+        corr_thresh : float, optional
+            Correlation threshold for passing (default 0.6).
+
+        Returns
+        -------
+        corr : float
+            2D correlation coefficient between split maps.
+        passes : bool
+            Whether correlation exceeds threshold.
+        """
         # Get absolute indices of frames that are used (after all masking)
         abs_inds = np.where(self.useinds)[0]
         n_used = len(abs_inds)
@@ -592,7 +865,27 @@ class BoundaryTuning:
         return corr, passes
     
     def _test_mean_resultant_across_shuffles_mp(self, c, mrl, n_shfl=100, mrl_thresh_position=99):
- 
+        """
+        Test mean resultant length (MRL) against shuffled spike trains using multiprocessing.
+
+        Parameters
+        ----------
+        c : int
+            Cell index.
+        mrl : float
+            Observed mean resultant length.
+        n_shfl : int, optional
+            Number of shuffles (default 100).
+        mrl_thresh_position : float, optional
+            Percentile for threshold (default 99).
+
+        Returns
+        -------
+        use_mrl_thresh : float
+            Threshold MRL from shuffled distribution.
+        passes : bool
+            Whether observed MRL exceeds threshold.
+        """
         n_proc = multiprocessing.cpu_count() - 1
         pool = multiprocessing.Pool(processes=n_proc)
 
@@ -600,7 +893,7 @@ class BoundaryTuning:
             pool.apply_async(
                 calc_shfl_mean_resultant_mp,
                 args=(
-                    self.data['norm_spikes'][c,:].copy(),
+                    self.data['norm_spikes'][c, :].copy(),
                     self.useinds,
                     self.occupancy,
                     self.ray_distances,
@@ -631,7 +924,30 @@ class BoundaryTuning:
 
     
     def _test_mean_resultant_across_shuffles(self, c, mrl, n_shfl=100, mrl_thresh_position=99, use_mp=True):
+        """
+        Test mean resultant length (MRL) against shuffled spike trains.
+        Optionally uses multiprocessing.
 
+        Parameters
+        ----------
+        c : int
+            Cell index.
+        mrl : float
+            Observed mean resultant length.
+        n_shfl : int, optional
+            Number of shuffles (default 100).
+        mrl_thresh_position : float, optional
+            Percentile for threshold (default 99).
+        use_mp : bool, optional
+            Whether to use multiprocessing (default True).
+
+        Returns
+        -------
+        mrl : float
+            Observed mean resultant length.
+        passes : bool
+            Whether observed MRL exceeds threshold.
+        """
         if use_mp:
             return self._test_mean_resultant_across_shuffles_mp(c, mrl, n_shfl, mrl_thresh_position)
             
@@ -653,14 +969,30 @@ class BoundaryTuning:
         return mrl, passes
     
     def identify_boundary_cells(self, n_chunks=20, n_shuffles=20, corr_thresh=0.6, mp=True):
+        """
+        Classify boundary cells (EBCs) using split-half reliability and MRL criteria.
 
+        Parameters
+        ----------
+        n_chunks : int, optional
+            Number of chunks for split-half (default 20).
+        n_shuffles : int, optional
+            Number of shuffles for MRL test (default 20).
+        corr_thresh : float, optional
+            Correlation threshold for split-half (default 0.6).
+        mp : bool, optional
+            Whether to use multiprocessing for shuffles (default True).
+
+        Returns
+        -------
+        criteria_out : dict
+            Dictionary with classification results and metrics for each cell.
+        """
         N_cells = self.rate_maps.shape[0]
         self.is_EBC = np.zeros(N_cells, dtype=bool)
 
         for c in tqdm(range(N_cells)):
-
-            ratemap = self.rate_maps[c,:,:]
-
+            ratemap = self.rate_maps[c, :, :]
             if self.is_IEBC[c]:
                 ratemap = self._invert_ratemap(ratemap)
             
@@ -693,15 +1025,33 @@ class BoundaryTuning:
         return self.criteria_out
     
     def identify_responses(self, use_angle='head', use_light=False, use_dark=False, skip_classification=False):
-        
-            
+        """
+        Full pipeline for boundary cell analysis: computes ray distances, occupancy, rate maps,
+        smoothing, and classifies EBC/IEBC if requested.
+
+        Parameters
+        ----------
+        use_angle : str, optional
+            Which angle to use ('head', 'pupil', or 'ego'). Default is 'head'.
+        use_light : bool, optional
+            Restrict to light condition (default False).
+        use_dark : bool, optional
+            Restrict to dark condition (default False).
+        skip_classification : bool, optional
+            If True, skip EBC/IEBC classification (default False).
+
+        Returns
+        -------
+        data_out : dict
+            Dictionary with all computed maps, metrics, and classifications.
+        """
         if use_light:
-            assert self.data['ltdk']==True, 'Data must be preprocessed with light conditions.'
+            assert self.data['ltdk'] == True, 'Data must be preprocessed with light conditions.'
             print('  -> Calculating boundary responses for light condition.')
             useinds = self.data['ltdk_state_vec'].copy() == 1
 
         elif use_dark:
-            assert self.data['ltdk']==True, 'Data must be preprocessed with dark conditions.'
+            assert self.data['ltdk'] == True, 'Data must be preprocessed with dark conditions.'
             print('  -> Calculating boundary responses for dark condition.')
             useinds = self.data['ltdk_state_vec'].copy() == 0
 
@@ -715,9 +1065,7 @@ class BoundaryTuning:
         # changed to shifted +2 frames on 8/18/25 (spikes shifted as [3, 4, 0, 1, 2])
         # last version with -2 was _v5.h5; Now testing +2 with _v6_posroll.h5
         # self.data['norm_spikes'] = np.roll(self.data['norm_spikes'], 2, axis=1)
-
-        self.useinds = self.useinds * (self.data['speed']>2.)
-
+        self.useinds = self.useinds * (self.data['speed'] > 2.)
         # calculate potential angles
         if use_angle == 'head':
             self.calc_allo_yaw()
@@ -776,7 +1124,14 @@ class BoundaryTuning:
         return data_out
 
     def save_results(self, savepath):
+        """
+        Save results to HDF5 file using fm2p.write_h5.
 
+        Parameters
+        ----------
+        savepath : str
+            Path to save the HDF5 file.
+        """
         data_out = convert_bools_to_ints(self.data_out)
 
         fm2p.write_h5(savepath, data_out)
