@@ -245,6 +245,9 @@ class BoundaryTuning:
     
     def calc_occupancy(self, inds=None):
 
+        if np.size(self.ray_distances, 0) < np.size(inds):
+            inds = None
+
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
         occupancy = np.zeros((N_angular_bins, N_distance_bins))
@@ -701,7 +704,7 @@ class BoundaryTuning:
         _ = self.get_ray_distances(angle=use_angle)
 
         print('  -> Calculating occupancy.')
-        self.occupancy = self.calc_occupancy(useinds=self.useinds)
+        self.occupancy = self.calc_occupancy(inds=self.useinds)
 
         print('  -> Calculating rate maps.')
         _ = self.calc_rate_maps()

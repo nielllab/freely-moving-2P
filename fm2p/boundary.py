@@ -12,12 +12,14 @@ import fm2p
 
 def boundary():
 
-    skip_classification = True
+    skip_classification = False
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-cfg', '--cfg', type=str, default=None)
     args = parser.parse_args()
     cfg_path = args.cfg
+
+    # cfg_path = r'Y:\Mini2P_data\250630_DMM_DMM037_ltdk\config.yaml'
 
     if cfg_path is None:
         cfg_path = fm2p.select_file(
@@ -49,13 +51,13 @@ def boundary():
         savedir = os.path.split(preproc_path)[0]
         basename = os.path.split(preproc_path)[1][:-11]
 
-        saveflag = 'dropslow'
-        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v6_{}.h5'.format(basename, saveflag))
-        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v6_{}.h5'.format(basename, saveflag))
-        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v6_{}.h5'.format(basename, saveflag))
-        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v6_{}.h5'.format(basename, saveflag))
-        light_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_ltegopillar_v6_{}.h5'.format(basename, saveflag))
-        dark_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_dkegopillar_v6_{}.h5'.format(basename, saveflag))
+        saveflag = 'fullOcc'
+        light_head_savepath = os.path.join(savedir, '{}_boundary_tuning_ltego_v7_{}.h5'.format(basename, saveflag))
+        dark_head_savepath = os.path.join(savedir, '{}_boundary_tuning_dkego_v7_{}.h5'.format(basename, saveflag))
+        light_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_ltret_v7_{}.h5'.format(basename, saveflag))
+        dark_eye_savepath = os.path.join(savedir, '{}_boundary_tuning_dkret_v7_{}.h5'.format(basename, saveflag))
+        light_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_ltegopillar_v7_{}.h5'.format(basename, saveflag))
+        dark_ego_savepath = os.path.join(savedir, '{}_boundary_tuning_dkegopillar_v7_{}.h5'.format(basename, saveflag))
 
         print('  -> Starting to analyze egocentric tuning in light condition.')
         lthead_bt = fm2p.BoundaryTuning(preproc_data)
