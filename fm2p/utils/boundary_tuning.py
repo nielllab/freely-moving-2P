@@ -244,9 +244,11 @@ class BoundaryTuning:
         return self.ray_distances
     
     def calc_occupancy(self, inds=None):
-
-        if np.size(self.ray_distances, 0) < np.size(inds):
-            inds = None
+        
+        # Ensure that inds, if provided, is valid and within bounds
+        if inds is not None:
+            if np.any(np.array(inds) >= self.ray_distances.shape[0]) or np.any(np.array(inds) < 0):
+                raise ValueError('Indices for occupancy calculation are out of bounds.')
 
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
@@ -349,6 +351,20 @@ class BoundaryTuning:
 
         self.smoothed_rate_maps = smoothed_rate_maps
         return self.smoothed_rate_maps
+
+    def smooth_map_pair(self, map1, map2):
+        """
+        Smooth two arbitrary rate maps using the same logic as smooth_rate_maps,
+        but without modifying self.rate_maps.
+        """
+        from scipy.ndimage import gaussian_filter
+        smoothed_maps = []
+        for ratemap in [map1, map2]:
+            temp_padded = np.vstack((ratemap, ratemap, ratemap))
+            temp_smoothed = gaussian_filter(temp_padded, sigma=1)
+            smoothed = temp_smoothed[ratemap.shape[0]:2*ratemap.shape[0], :]
+            smoothed_maps.append(smoothed)
+        return smoothed_maps[0], smoothed_maps[1]
     
     def _invert_ratemap(self, ratemap):
         return np.max(ratemap) - ratemap + np.min(ratemap)
@@ -495,6 +511,7 @@ class BoundaryTuning:
 
         return mr, mean_resultant_length, mean_resultant_angle
 
+
     def _calc_single_ratemap_subsetting(self, c, inds):
 
         spikes = self.data['norm_spikes'][c, inds]
@@ -518,43 +535,55 @@ class BoundaryTuning:
 
         return rate_map
 
+
     def _calc_correlation_across_split(self, c, ncnk=20, corr_thresh=0.6):
+        
+        # Get absolute indices of frames that are used (after all masking)
+        abs_inds = np.where(self.useinds)[0]
+        n_used = len(abs_inds)
+        
+        if n_used < ncnk:
+            ncnk = n_used
 
-        _len = np.sum(self.useinds)
-
-        cnk_sz = _len // ncnk
-
-        _all_inds = np.arange(0,_len)
-
+        cnk_sz = n_used // ncnk
         chunk_order = np.arange(ncnk)
-        np.random.shuffle(chunk_order)
 
+        np.random.shuffle(chunk_order)
+        
         split1_inds = []
         split2_inds = []
-
-        for cnk_i, cnk in enumerate(chunk_order[:(ncnk//2)]):
-            _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+        for cnk in chunk_order[:(ncnk // 2)]:
+            _inds = np.arange(cnk_sz * cnk, min(cnk_sz * (cnk + 1), n_used))
             split1_inds.extend(_inds)
-
-        for cnk_i, cnk in enumerate(chunk_order[(ncnk//2):]):
-            _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+        
+        for cnk in chunk_order[(ncnk // 2):]:
+            _inds = np.arange(cnk_sz * cnk, min(cnk_sz * (cnk + 1), n_used))
             split2_inds.extend(_inds)
-
+        
         split1_inds = np.array(np.sort(split1_inds)).astype(int)
         split2_inds = np.array(np.sort(split2_inds)).astype(int)
+        
+        # Map split indices to absolute indices in the original data
+        split1_abs = abs_inds[split1_inds[split1_inds < n_used]]
+        split2_abs = abs_inds[split2_inds[split2_inds < n_used]]
+        
+        rm1 = self._calc_single_ratemap_subsetting(c, split1_abs)
+        rm2 = self._calc_single_ratemap_subsetting(c, split2_abs)
+        
+        # Smooth the two split rate maps before correlation
+        rm1_smooth, rm2_smooth = self.smooth_map_pair(rm1, rm2)
+        
+        # Calculate 2D correlations on smoothed maps
+        corr = fm2p.corr2_coeff(rm1_smooth, rm2_smooth)
 
-        rm1 = self._calc_single_ratemap_subsetting(c, split1_inds)
-        rm2 = self._calc_single_ratemap_subsetting(c, split2_inds)
-
-        # calculate 2D correlations
-        corr = fm2p.corr2_coeff(rm1, rm2)
+        # Check if the correlation exceeds the threshold
         passes = corr > corr_thresh
 
-        temp_dict = {
-            'split_rate_map_1': rm1,
-            'split_rate_map_2': rm2,
-        }
 
+        temp_dict = {
+            'split_rate_map_1': rm1_smooth,
+            'split_rate_map_2': rm2_smooth,
+        }
         self.criteria_out['cell_{:03d}'.format(c)] = {
             **self.criteria_out['cell_{:03d}'.format(c)],
             **temp_dict
