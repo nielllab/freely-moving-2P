@@ -394,23 +394,26 @@ class BoundaryTuning:
         occupancy : np.ndarray
             2D array (angular x distance) of occupancy counts.
         """
-        # Convert boolean mask to integer indices if needed
-        if inds is not None:
-            inds = np.asarray(inds)
-            if inds.dtype == bool:
-                inds = np.where(inds)[0]
-            if np.any(inds >= self.ray_distances.shape[0]) or np.any(inds < 0):
-                raise ValueError('Indices for occupancy calculation are out of bounds.')
+
+        if np.size(self.ray_distances, 0) > (np.where(inds)[0]).size:
+            kept_indices = np.nonzero(self.useinds)[0]
+            mask_in_target = np.isin(kept_indices, inds)
+            ray_distances = self.ray_distances.copy()[mask_in_target,:]
+        else:
+            ray_distances = self.ray_distances.copy()
+
+        assert np.size(ray_distances, 0) == (np.where(inds)[0]).size
+
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
         occupancy = np.zeros((N_angular_bins, N_distance_bins))
+        
         for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
             dist_bin_end = dist_bin_start + self.dist_bin_size
+            
             # create a mask of where the distance falls within the current distance bin
-            if inds is None:
-                mask = (self.ray_distances >= dist_bin_start) & (self.ray_distances < dist_bin_end)
-            else:
-                mask = (self.ray_distances[inds] >= dist_bin_start) & (self.ray_distances[inds] < dist_bin_end)
+            mask = (ray_distances >= dist_bin_start) & (ray_distances < dist_bin_end)
+
             # sum across frames to get occupancy for each angular bin
             occupancy[:, d] = np.sum(mask, axis=0)
         return occupancy
@@ -768,7 +771,9 @@ class BoundaryTuning:
             2D array (angular x distance) of firing rates for the subset.
         """
         spikes = self.data['norm_spikes'][c, inds]
-        ray_distances = self.ray_distances[inds, :]
+        kept_indices = np.nonzero(self.useinds)[0]
+        mask_in_target = np.isin(kept_indices, inds)
+        ray_distances = self.ray_distances[mask_in_target, :]
 
         N_angular_bins = int(360 / self.ray_width)
         N_distance_bins = len(self.dist_bin_edges) - 1
