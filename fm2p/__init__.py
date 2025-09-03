@@ -109,7 +109,8 @@ from .utils.behavior import (
 
 from .utils.alignment import (
     align_eyecam_using_TTL,
-    align_lightdark_using_TTL
+    align_lightdark_using_TTL,
+    align_crop_IMU
 )
 
 from .utils.frame_annotation import (
@@ -238,3 +239,10 @@ from .utils.boundary_tuning import (
 )
 
 from .boundary import boundary
+
+from .utils.sensor_fusion import (
+    Kalman,
+    ImuOrientation
+)
+
+from .utils.imu import read_IMU

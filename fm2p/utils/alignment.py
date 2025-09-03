@@ -89,7 +89,7 @@ def align_eyecam_using_TTL(eye_dlc_h5, eye_TS_csv, eye_TTLV_csv, eye_TTLTS_csv, 
     eyeStart, _ = fm2p.find_closest_timestamp(eyeT, apply_t0)
     eyeEnd, _ = fm2p.find_closest_timestamp(eyeT, apply_tEnd)
 
-    return eyeStart, eyeEnd
+    return eyeStart, eyeEnd, apply_t0, apply_tEnd
 
 
 
@@ -164,5 +164,32 @@ def align_lightdark_using_TTL(ltdk_TTL_path, ltdk_TS_path, eyeT, twopT, eyeStart
     return light_state_vec, twopInds_light_onsets, twopInds_dark_onsets
 
 
+def align_crop_IMU(df, imuT, apply_t0, apply_tEnd, eyeT, twopT):
 
+    outputs = {}
 
+    imuStart, _ = fm2p.find_closest_timestamp(imuT, apply_t0)
+    imuEnd, _ = fm2p.find_closest_timestamp(imuT, apply_tEnd)
+
+    keys = df.keys()
+
+    for k in keys:
+
+        v_eye_interp = fm2p.interpT(
+            df[k].iloc[imuStart:imuEnd].to_numpy(),
+            imuT[imuStart:imuEnd] - imuT[imuStart],
+            eyeT - eyeT[0]
+        )
+
+        v_twop_interp = fm2p.interpT(
+            df[k].iloc[imuStart:imuEnd].to_numpy(),
+            imuT[imuStart:imuEnd] - imuT[imuStart],
+            twopT
+        )
+
+        outputs['{}_raw'.format(k)] = df[k].to_numpy()
+        outputs['{}_trim'.format(k)] = df[k].iloc[imuStart:imuEnd].to_numpy()
+        outputs['{}_eye_interp'.format(k)] = v_eye_interp
+        outputs['{}_twop_interp'.format(k)] = v_twop_interp
+
+    return outputs

@@ -179,6 +179,10 @@ def preprocess(cfg_path=None, spath=None):
             ltdk_TTL_voltage = fm2p.find('*_ltdklogTTL.csv', rpath, MR=True)
             ltdk_TTL_timestamps = fm2p.find('*_ltdkttlTS.csv', rpath, MR=True)
 
+        if cfg['imu']:
+            imu_vals = fm2p.find('*_IMUvals.csv', rpath, MR=True)
+            imu_timestamps = fm2p.find('*_IMUtime.csv', rpath, MR=True)
+
         # Topdown camera files
         possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False)
         topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
@@ -298,7 +302,7 @@ def preprocess(cfg_path=None, spath=None):
 
         print('  -> Aligning eye camera data streams to 2P and behavior data using TTL voltage.')
 
-        eyeStart, eyeEnd = fm2p.align_eyecam_using_TTL(
+        eyeStart, eyeEnd, apply_t0, apply_tEnd = fm2p.align_eyecam_using_TTL(
             eye_dlc_h5=eyecam_pts_path,
             eye_TS_csv=eyecam_video_timestamps,
             eye_TTLV_csv=eyecam_TTL_voltage,
@@ -308,6 +312,15 @@ def preprocess(cfg_path=None, spath=None):
         eyeStart = int(eyeStart)
         eyeEnd = int(eyeEnd)
 
+        if cfg['imu']:
+
+            print('  -> Reading IMU data in and performing sensor fusion.')
+
+            imu_df, imuT = fm2p.read_IMU(imu_vals, imu_timestamps)
+
+            print('  -> Aligning IMU to 2P and othe behavior data.')
+
+            imu_dict = fm2p.align_crop_IMU(imu_df, imuT, apply_t0, apply_tEnd, eyeT, twopT)
 
         print('  -> Running spike inference.')
 
@@ -459,6 +472,10 @@ def preprocess(cfg_path=None, spath=None):
 
         if len(cyclotorsion_dict.keys()) > 0:
             preprocessed_dict = {**preprocessed_dict, **cyclotorsion_dict}
+
+        if cfg['imu']:
+            preprocessed_dict = {**preprocessed_dict, **imu_dict}
+            
 
         # fm2p.run_preprocessing_diagnostics(preprocessed_dict, ltdk=ltdk)
 

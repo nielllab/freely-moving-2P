@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Top-down camera tracking and analysis.
 
