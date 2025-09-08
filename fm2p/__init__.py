@@ -246,3 +246,17 @@ from .utils.sensor_fusion import (
 )
 
 from .utils.imu import read_IMU
+
+from .utils.PETH import (
+    calc_hist_PETH,
+    norm_psth,
+    norm_psth_paired,
+    find_trajectory_initiation,
+    get_event_offsets,
+    get_event_onsets,
+    balanced_index_resample,
+    calc_PETHs,
+    drop_nearby_events,
+    drop_repeat_events,
+    calc_PETH_mod_ind
+)
