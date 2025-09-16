@@ -8,6 +8,7 @@ include_recordings: []
 axons: false
 ltdk: true
 hp_plug: false
+imu: true
 
 # Hippocampal recording prefixes
 hp_inter_recs: [1, 3]

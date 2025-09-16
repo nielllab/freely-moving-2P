@@ -197,6 +197,8 @@ from .summarize_revcorr import summarize_revcorr
 from .summarize_revcorr_ltdk import summarize_revcorr_ltdk
 
 from .utils.axons import (
+    get_single_independent_axons,
+    get_grouped_independent_axons,
     get_independent_axons
 )
 

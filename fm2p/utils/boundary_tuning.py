@@ -234,6 +234,8 @@ class BoundaryTuning:
         Sets self.head_ang and self.pupil_ang.
         """
         self.head_ang = self.data['head_yaw_deg']
+
+    def calc_allo_pupil(self):
         self.pupil_ang = self.data['retinocentric']
 
     def calc_ego(self):
