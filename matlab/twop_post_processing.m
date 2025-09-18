@@ -1,4 +1,7 @@
-
+function twop_post_processing()
+% twop_post_processing()
+% Process fluorescence data and run spike inference to get spike times,
+% not just a binned spike rate.
 
 [tif_file,tif_location] = uigetfile('*.tif', 'Choose tif stack.');
 [mat_file,mat_location] = uigetfile('*.mat', 'Choose Suite2P or Goard-method mat file.');
@@ -24,8 +27,22 @@ endT = timestamps(end);
 resolution = 1/fps;
 bins = 0:resolution:endT;
 
-% Suite2P output
 load(fullfile(mat_location, mat_file))
+
+% Determine if preprocessing used suite2p or not
+if exist('data', 'var') == 1
+    suite2p = 0;
+elseif exist('F', 'var') == 1
+    suite2p = 1;
+else
+    fprintf("Cannot find variables.")
+end
+
+if suite2p == 0
+    F = data.rawF;
+    Fneu = data.neuropil_F;
+end
+
 n_cells = size(F,1);
 
 fprintf("Preprocessing fluorescence.\n");
@@ -96,7 +113,11 @@ parfor i = cells
     spikerates(i,:) = spkrate(samplekeep,:); % spk rates saved in one big mtx for all cells
     MCMCcorrs(i) = meancorr; % mean corr for QC
 
+    fprintf("Done with cell %d", i);
+
 end
 
 save("spikes.mat", "MCMCcorrs", "spikerates", "spiketimes", "timestamps", ...
     "Fcorr", "spks", "F", "Fneu", "iscell")
+
+end
