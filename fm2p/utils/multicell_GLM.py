@@ -370,7 +370,7 @@ class multicell_GLM:
         return self.loss_history
     
 
-def run_pupil_model(data, use_dFF=False):
+def run_pupil_model(data, use_dFF=False, use_light=True):
 
     print('  -> Fitting pupil-prediction model.')
 
@@ -391,25 +391,30 @@ def run_pupil_model(data, use_dFF=False):
     phi = data['phi_interp'].copy()
 
     # movement speeds in  deg/sec
-    theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
-    phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
-    eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
-    eyeT = eyeT - eyeT[0]
-    twopT = data['twopT']
-    dt = 1/60
-    dTheta_full = np.diff(theta_full) / dt
-    dPhi_full = np.diff(phi_full) / dt
+    # theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
+    # phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
+    # eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
+    # eyeT = eyeT - eyeT[0]
+    # twopT = data['twopT']
+    # dt = 1/60
+    # dTheta_full = np.diff(theta_full) / dt
+    # dPhi_full = np.diff(phi_full) / dt
 
-    dTheta = fm2p.interpT(dTheta_full, eyeT[:-1], twopT)
-    dPhi = fm2p.interpT(dPhi_full, eyeT[:-1], twopT)
+    # dTheta = fm2p.interpT(dTheta_full, eyeT[:-1], twopT)
+    # dPhi = fm2p.interpT(dPhi_full, eyeT[:-1], twopT)
 
-    y = np.vstack([theta, phi, dTheta, dPhi])
+    y = np.vstack([theta, phi])
 
-    if data['ltdk']:
+    if data['ltdk'] and use_light is True:
         # if this is a light/dark recording, only fit on the light periods
         ltdk = data['ltdk_state_vec']
         y = y[:,ltdk]
         X = X[:,ltdk]
+    elif data['ltdk'] and use_light is False:
+        # fit on the dark periods
+        ltdk = data['ltdk_state_vec']
+        y = y[:,~ltdk]
+        X = X[:,~ltdk]
 
     model = fm2p.multicell_GLM(
         model='regress',
@@ -418,8 +423,6 @@ def run_pupil_model(data, use_dFF=False):
         l1_penalty=l1_penalty,
         l2_penalty=l2_penalty,
     )
-
-    # yp_test_unscaled = y.copy()[:,test_inds]
 
     y = model.fit_apply_transform(y)
 
@@ -432,7 +435,7 @@ def run_pupil_model(data, use_dFF=False):
     pupil_weights = model.get_weights()
     train_inds, test_inds, nan_mask = model.get_train_test_inds()
 
-    # Test on the train data to see if it at least predicts that
+    # predict on training data
     yp_train_hat, train_mse = model.predict(Xp_train, yp_train)
 
     results = {
@@ -444,7 +447,6 @@ def run_pupil_model(data, use_dFF=False):
         'X_test': Xp_test,
         'y_train': model.apply_inverse_transform(yp_train),
         'y_test': model.apply_inverse_transform(yp_test),
-        # 'y_test_unscaled': yp_test_unscaled,
         'y_hat_train': model.apply_inverse_transform(yp_train_hat.T),
         'MSE_train': train_mse,
         'train_inds': train_inds,
@@ -748,7 +750,7 @@ def run_movement_model(data, ind, use_dFF=False):
 def fit_multicell_GLM(preproc_path=None, use_dFF=False):
 
     # preproc_path = r'K:\Mini2P\250627_DMM_DMM037_ltdk\fm5\250627_DMM_DMM037_fm_05_preproc.h5'
-    models = 'PRB'
+    models = 'P'
     #  = r'T:\Mini2P\250514_DMM_DMM046_LPaxons\fm1\250514_DMM_DMM046_fm_1_preproc.h5'
 
     data = fm2p.read_h5(preproc_path)
@@ -756,7 +758,8 @@ def fit_multicell_GLM(preproc_path=None, use_dFF=False):
     all_model_results = {}
 
     if 'P' in models:
-        all_model_results['pupil'] = run_pupil_model(data, use_dFF=use_dFF)
+        all_model_results['pupil_light'] = run_pupil_model(data, use_dFF=use_dFF, use_light=True)
+        all_model_results['pupil_dark'] = run_pupil_model(data, use_dFF=use_dFF, use_light=False)
 
     if 'M' in models:
         print('  -> Fitting theta saccade prediction model.')
@@ -773,7 +776,7 @@ def fit_multicell_GLM(preproc_path=None, use_dFF=False):
 
     savedir = os.path.split(preproc_path)[0]
     basename = os.path.split(preproc_path)[1][:-11]
-    savepath = os.path.join(savedir, '{}_multicell_GLM_results_v7.h5'.format(basename))
+    savepath = os.path.join(savedir, '{}_multicell_GLM_results_v9_ltdk.h5'.format(basename))
 
     fm2p.write_h5(savepath, all_model_results)
 

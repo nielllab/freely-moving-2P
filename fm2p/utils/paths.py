@@ -81,7 +81,7 @@ def up_dir(f, num=1):
     return dir
 
 
-def find(pattern, path, MR=False):
+def find(pattern, path, MR=False, retempty=False):
     """ Glob for subdirectories.
 
     Parameters
@@ -120,9 +120,12 @@ def find(pattern, path, MR=False):
             # if the file matches the filetype append to list
             if fnmatch.fnmatch(name,pattern):
                 result.append(os.path.join(root,name))
-    
+
     if len(result) == 0:
-        raise FileNotFoundError('Found no file(s) matching key {} in directory {}'.format(pattern, path))
+        if not retempty:
+            raise FileNotFoundError('Found no file(s) matching key {} in directory {}'.format(pattern, path))
+        elif retempty:
+            return
 
     if MR is True:
         # Return only the most recent result

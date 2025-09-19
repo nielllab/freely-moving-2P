@@ -1,10 +1,14 @@
-function twop_post_processing()
+function twop_post_processing(tifpath, matpath)
 % twop_post_processing()
 % Process fluorescence data and run spike inference to get spike times,
 % not just a binned spike rate.
 
-[tif_file,tif_location] = uigetfile('*.tif', 'Choose tif stack.');
-[mat_file,mat_location] = uigetfile('*.mat', 'Choose Suite2P or Goard-method mat file.');
+if nargin == 0
+    [tif_file,tif_location] = uigetfile('*.tif', 'Choose tif stack.');
+    [mat_file,mat_location] = uigetfile('*.mat', 'Choose Suite2P or Goard-method mat file.');
+    matpath = fullfile(mat_location, mat_file);
+    tifpath = fullfile(tif_location, tif_file);
+end
 
 fps = 7.59;
 gaussfiltSize = 30; % in seconds
@@ -12,11 +16,11 @@ maxminfiltSize = 120; % in seconds
 
 % Get tif metadata from scanimage
 fprintf("Reading image metadata.\n");
-info = imfinfo(fullfile(tif_location, tif_file));
+info = imfinfo(tifpath);
 n_frames = size(info, 1);
 timestamps = zeros(n_frames, 1);
 for f = 1:n_frames
-    [tmp, strend] = strsplit(info(f).ImageDescription, 'frameTimestamps_sec = ');
+    [tmp, ~] = strsplit(info(f).ImageDescription, 'frameTimestamps_sec = ');
     val = strsplit(char(tmp(2)), '\nacqTriggerTimestamps_sec =');
     val = str2double(char(val(1)));
     timestamps(f) = val;
@@ -27,7 +31,7 @@ endT = timestamps(end);
 resolution = 1/fps;
 bins = 0:resolution:endT;
 
-load(fullfile(mat_location, mat_file))
+load(matpath)
 
 % Determine if preprocessing used suite2p or not
 if exist('data', 'var') == 1

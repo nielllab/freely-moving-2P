@@ -10,7 +10,7 @@ Author: DMM, last modified Sept. 2025
 """
 
 
-from psychopy import visual, core, event
+from psychopy import visual, core, event, monitors
 import numpy as np
 import serial
 
@@ -24,7 +24,7 @@ off_time = 0.5
 num_repeats = 1
 shuffle = True
 save_frames = True
-output_file = 'sparse_noise_sequence.npy'
+output_file = 'T:/sparse_noise_sequence_v2.npy'
 
 # Arduino serial settings
 #arduino_port = 'COM3'
@@ -37,7 +37,8 @@ win = visual.Window(
     color=[0, 0, 0],
     units='pix',
     fullscr=True,
-    checkTiming=False
+    checkTiming=False,
+    screen=1
 )
 monitor_x, monitor_y = win.size[0] // 2, win.size[1] // 2
 

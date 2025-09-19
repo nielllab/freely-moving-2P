@@ -262,3 +262,8 @@ from .utils.PETH import (
     drop_repeat_events,
     calc_PETH_mod_ind
 )
+
+from .utils.sparse_noise import (
+    measure_sparse_noise_receptive_fields
+)
+

@@ -236,14 +236,21 @@ class BoundaryTuning:
         self.head_ang = self.data['head_yaw_deg']
 
     def calc_allo_pupil(self):
-        self.pupil_ang = self.data['retinocentric']
+        # i do NOT want to use retinocentric pillar location
+        # instead, use gaze orientation
+
+        self.pupil_ang = self.data['head_yaw_deg'].copy()[:-1] + self.data['pupil_from_head'].copy()
+        self.pupil_ang = self.pupil_ang % 360
+
+        # self.pupil_ang = self.data['retinocentric'] + 180.
+
 
     def calc_ego(self):
         """
         Compute egocentric angles from preprocessed data.
         Sets self.ego_ang.
         """
-        self.ego_ang = self.data['egocentric']
+        self.ego_ang = self.data['egocentric'] + 180.
 
     def get_ray_distances(self, angle='head'):
         """
@@ -261,7 +268,7 @@ class BoundaryTuning:
         """
 
         # Select the angle trace based on the requested reference frame
-        if angle == 'head':
+        if angle == 'egow':
             if self.head_ang is None:
                 self.calc_allo_yaw()
             angle_trace = self.head_ang
@@ -269,7 +276,7 @@ class BoundaryTuning:
             if self.pupil_ang is None:
                 self.calc_allo_pupil()
             angle_trace = self.pupil_ang
-        elif angle == 'ego':
+        elif angle == 'egop':
             if self.pupil_ang is None:
                 self.calc_ego()
             angle_trace = self.ego_ang
@@ -283,10 +290,11 @@ class BoundaryTuning:
         x_trace = x_trace[use_inds]
         y_trace = y_trace[use_inds]
 
-        if len(use_inds) > len(angle_trace):
-            angle_trace = np.append(angle_trace, angle_trace[-1])
-        elif len(use_inds) < len(angle_trace):
-            angle_trace = angle_trace[:-1]
+        # Why was this length check added? Currently causing IndexError... commented out 9/18/25
+        # if len(use_inds) > len(angle_trace):
+        #     angle_trace = np.append(angle_trace, angle_trace[-1])
+        # elif len(use_inds) < len(angle_trace):
+        #     angle_trace = angle_trace[:-1]
 
         angle_trace = angle_trace[use_inds]
         angle_trace = np.deg2rad(angle_trace)

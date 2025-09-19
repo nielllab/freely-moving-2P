@@ -18,8 +18,8 @@ def calc_hist_PETH(spikes, event_frames, window_bins):
         # Calculate absolute indices for this event
         indices = event + window_bins
         # Clip indices to stay within valid range
-        valid_mask = (indices >= 0) & (indices < spikes.shape[1])
-        valid_indices = indices[valid_mask]
+        valid_mask = (indices >= 0) & (indices < n_frames)
+        valid_indices = (indices[valid_mask]).astype(int)
         if len(valid_indices) > 0:
             psth[:, i, valid_mask] = spikes[:, valid_indices]
 
@@ -35,6 +35,7 @@ def norm_psth(mean_psth):
         psth_norm[c,:] = (x - np.nanmean(x[:10])) / np.nanmax(x)
     return psth_norm
 
+
 def norm_psth_paired(mean_psth1, mean_psth2):
     psth1_norm = np.zeros_like(mean_psth1)*np.nan
     psth2_norm = np.zeros_like(mean_psth2)*np.nan
@@ -45,6 +46,7 @@ def norm_psth_paired(mean_psth1, mean_psth2):
         psth1_norm[c,:] = (x1 - np.nanmean(x1[:10])) / max_val
         psth2_norm[c,:] = (x2 - np.nanmean(x2[:10])) / max_val
     return psth1_norm, psth2_norm
+
 
 def find_trajectory_initiation(signal, time, peak_times, smoothing_window=2):
 
@@ -120,6 +122,7 @@ def drop_nearby_events(thin, avoid, win=0.25):
     thinned = np.delete(thin, np.isin(thin, to_drop))
     return thinned
 
+
 def drop_repeat_events(eventT, onset=True, win=0.020):
     duplicates = set([])
     for t in eventT:
@@ -172,11 +175,9 @@ def calc_PETH_mod_ind(psth):
 
 
 def calc_PETHs(data):
-    
-    # data = fm2p.read_h5(data_path)
 
-    theta_interp = data['theta']
-    phi_interp = data['phi']
+    # theta_interp = data['theta']
+    # phi_interp = data['phi']
 
     theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
     phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
@@ -208,7 +209,7 @@ def calc_PETHs(data):
     downward_onsets = get_event_offsets(downward_onsets, min_frames=4)
     down_phi_movement_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in downward_onsets if not np.isnan(t)])
 
-    upward_onsets = get_event_onsets(eyeT[np.where(dPhi < -300)[0]], min_frames=4)
+    upward_onsets = get_event_onsets(eyeT[np.where(dPhi > 300)[0]], min_frames=4)
     upward_onsets = find_trajectory_initiation(dPhi, eyeT[:-1], upward_onsets)
     upward_onsets = get_event_offsets(upward_onsets, min_frames=4)
     up_phi_movement_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in upward_onsets if not np.isnan(t)])
@@ -278,5 +279,104 @@ def calc_PETHs(data):
 
 
 
-# def calc_PETHs_IMU(data):
+def calc_PETHs_IMU(data):
 
+    theta_interp = data['theta']
+    phi_interp = data['phi']
+
+    theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
+    phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
+    eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
+    eyeT = eyeT - eyeT[0]
+    twopT = data['twopT']
+    dt = 1/60
+    dTheta = np.diff(theta_full) / dt
+    dPhi = np.diff(phi_full) / dt
+
+    dHead = data['gyro_z_eye_interp'].copy()
+    dGaze = dTheta.copy() + dHead
+
+    leftward_gazeshift_onsets = get_event_onsets(eyeT[
+        np.where(dHead > 60)[0] &
+        np.where(dGaze > 240)[0]
+        ],
+        min_frames=4
+    )
+    leftward_gazeshift_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in leftward_gazeshift_onsets if not np.isnan(t)])
+
+    rightward_gazeshift_onsets = get_event_onsets(eyeT[
+        np.where(dHead < -60)[0] &
+        np.where(dGaze < -240)[0]
+        ],
+        min_frames=4
+    )
+    rightward_gazeshift_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in rightward_gazeshift_onsets if not np.isnan(t)])
+
+    leftward_compensatory_onsets = get_event_onsets(eyeT[
+        np.where(dHead > 60)[0] &
+        np.where(dGaze < 120)[0] &
+        np.where(dGaze > -120)[0]
+        ],
+        min_frames=4
+    )
+    leftward_compensatory_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in leftward_compensatory_onsets if not np.isnan(t)])
+
+    rightward_compensatory_onsets = get_event_onsets(eyeT[
+        np.where(dHead < -60)[0] &
+        np.where(dGaze < 120)[0] &
+        np.where(dGaze > -120)[0]
+        ],
+        min_frames=4
+    )
+    rightward_compensatory_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in rightward_compensatory_onsets if not np.isnan(t)])
+
+    win_frames = np.arange(-15,16)
+    _, down_PETHs = calc_hist_PETH(data['norm_spikes'], downward_onsets, win_frames)
+
+    normR = norm_psth(right_PETHs)
+
+    peth_dict = {
+        'leftward_onsets': leftward_onsets,
+        'rightward_onsets': rightward_onsets,
+        'upward_onsets': upward_onsets,
+        'downward_onsets': downward_onsets,
+        'right_theta_movement_inds': right_theta_movement_inds,
+        'left_theta_movement_inds': left_theta_movement_inds,
+        'down_phi_movement_inds': down_phi_movement_inds,
+        'up_phi_movement_inds': up_phi_movement_inds,
+        'right_PETHs': right_PETHs,
+        'left_PETHs': left_PETHs,
+        'up_PETHs': up_PETHs,
+        'down_PETHs': down_PETHs,
+        'norm_right_PETHs': normR,
+        'norm_left_PETHs': normL,
+        'norm_up_PETHs': normU,
+        'norm_down_PETHs': normD
+    }
+
+
+def calc_cont_PETH(spikes, event_frames, window_bins):
+    # Calculate a PETH using continuous spiek times.
+    
+    spikes = np.asarray(spikes)
+    event_frames = np.asarray(event_frames)
+    window_bins = np.asarray(window_bins)
+
+    n_cells, n_frames = spikes.shape
+    n_events = len(event_frames)
+    n_bins = len(window_bins)
+
+    psth = np.zeros((n_cells, n_events, n_bins))
+
+    for i, event in enumerate(event_frames):
+        # Calculate absolute indices for this event
+        indices = event + window_bins
+        # Clip indices to stay within valid range
+        valid_mask = (indices >= 0) & (indices < n_frames)
+        valid_indices = (indices[valid_mask]).astype(int)
+        if len(valid_indices) > 0:
+            psth[:, i, valid_mask] = spikes[:, valid_indices]
+
+    mean_psth = psth.mean(axis=1)  # average across events
+
+    return psth, mean_psth

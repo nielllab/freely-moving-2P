@@ -66,28 +66,28 @@ def calc_revcorr(preproc_path, axons=False):
     ego_bins = np.linspace(-180, 180, 27)
     yaw_bins = np.linspace(-180, 180, 27)
     theta_bins = np.linspace(
-        np.nanpercentile(theta, 5),
-        np.nanpercentile(theta, 95),
+        np.nanpercentile(theta, 10),
+        np.nanpercentile(theta, 90),
         13
     )
     phi_bins = np.linspace(
-        np.nanpercentile(phi, 5),
-        np.nanpercentile(phi, 95),
+        np.nanpercentile(phi, 10),
+        np.nanpercentile(phi, 90),
         13
     )
     dist_bins = np.linspace(
-        np.nanpercentile(distance, 5),
-        np.nanpercentile(distance, 95),
+        np.nanpercentile(distance, 10),
+        np.nanpercentile(distance, 90),
         13
     )
     cdist_bins = np.linspace(
-        np.nanpercentile(cdistance, 5),
-        np.nanpercentile(cdistance, 95),
+        np.nanpercentile(cdistance, 10),
+        np.nanpercentile(cdistance, 90),
         13
     )
     psize_bins = np.linspace(
-        np.nanpercentile(pillar_size, 5),
-        np.nanpercentile(pillar_size, 95),
+        np.nanpercentile(pillar_size, 10),
+        np.nanpercentile(pillar_size, 90),
         13
     )
 
@@ -217,11 +217,33 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
     speed = data['speed'].copy()
     speeduse = speed > 1.5
     ltdk = data['ltdk_state_vec'].copy()
+
+    twopT = data['twopT'].copy()
     
     if restrict_by_deviation:
         theta_cent = theta.copy()
         theta_cent = theta_cent - np.nanmedian(theta_cent)
         use_thdev = np.abs(theta_cent) > 5.
+
+    # nF = np.size(spikes,1)
+    # if (len(theta) == (nF-1)) and (len(phi) == (nF-1)):
+    #     theta = theta[:-1]
+    #     phi = phi[:-1]
+
+    len_check = [
+        np.size(spikes,1),
+        np.size(theta),
+        np.size(phi),
+        np.size(retinocentric),
+        np.size(egocentric),
+        np.size(distance),
+        np.size(cdistance),
+        np.size(yaw),
+        np.size(speed),
+        np.size(ltdk),
+        np.size(twopT)
+    ]
+    assert len(set(len_check)) == 1, 'Unequal lengths along time axis. Lenghts are {}'.format(len_check)
 
 
     retino_bins = np.linspace(-180, 180, 27)
@@ -376,7 +398,7 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
 
     savedir = os.path.split(preproc_path)[0]
     basename = os.path.split(preproc_path)[1][:-11]
-    savepath = os.path.join(savedir, '{}_revcorr_results_v3.h5'.format(basename))
+    savepath = os.path.join(savedir, '{}_revcorr_results_v4.h5'.format(basename))
     fm2p.write_h5(savepath, full_reliability_dict)
 
     print('Saved {}'.format(savepath))

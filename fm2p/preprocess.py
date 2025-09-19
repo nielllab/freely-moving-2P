@@ -184,8 +184,15 @@ def preprocess(cfg_path=None, spath=None):
             imu_timestamps = fm2p.find('*_IMUtime.csv', rpath, MR=True)
 
         # Topdown camera files
-        possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False)
-        topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
+        possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False, retempty=True)
+
+        sn = False
+        if possible_topdown_videos is None:
+            print('  -> Treating recording {} as hea-fixed sparse noise (no topdown found).'.format(rname))
+            sn = True
+
+        if not sn:
+            topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
 
         if not axons:
             # Suite2p files
@@ -197,7 +204,7 @@ def preprocess(cfg_path=None, spath=None):
             ops_path = fm2p.find('ops.npy', rpath, MR=True)
 
         elif axons:
-            F_axons_path = fm2p.find('*_denoised_registered_data.mat', rpath, MR=True)
+            F_axons_path = fm2p.find('*_registered_data.mat', rpath, MR=True)
 
 
         if cfg['run_deinterlace']:
@@ -223,7 +230,7 @@ def preprocess(cfg_path=None, spath=None):
                     filter=False
                 )
 
-            if cfg['top_DLC_project'] != 'none':
+            if cfg['top_DLC_project'] != 'none' and (sn is False):
 
                 print('  -> Running pose estimation for topdown camera video.')
                 
@@ -235,7 +242,8 @@ def preprocess(cfg_path=None, spath=None):
 
         # Find DLC files
         eyecam_pts_path = fm2p.find(cfg['eyecam_DLC_search_key'], rpath, MR=True)
-        topdown_pts_path = fm2p.find(cfg['topdown_DLC_search_key'], rpath, MR=True)
+        if not sn:
+            topdown_pts_path = fm2p.find(cfg['topdown_DLC_search_key'], rpath, MR=True)
 
         print('  -> Reading fluorescence data.')
 
@@ -249,7 +257,7 @@ def preprocess(cfg_path=None, spath=None):
             iscell = np.load(iscell_path, allow_pickle=True)
 
         elif axons:
-            dFF_out, denoised_dFF, sps, usecells = fm2p.get_independent_axons(F_axons_path)
+            dFF_out, denoised_dFF, sps, kept_groups = fm2p.get_independent_axons(F_axons_path, merge_duplicates=True)
 
         # Create recording name
         # 250218_DMM_DMM038_rec_01_eyecam.avi
@@ -257,23 +265,24 @@ def preprocess(cfg_path=None, spath=None):
 
         print('  -> Measuring locomotor behavior.')
 
-        # Topdown behavior and obstacle/arena tracking
-        top_cam = fm2p.Topcam(rpath, full_rname, cfg=cfg)
-        top_cam.add_files(
-            top_dlc_h5=topdown_pts_path,
-            top_avi=topdown_video
-        )
+        if not sn:
+            # Topdown behavior and obstacle/arena tracking
+            top_cam = fm2p.Topcam(rpath, full_rname, cfg=cfg)
+            top_cam.add_files(
+                top_dlc_h5=topdown_pts_path,
+                top_avi=topdown_video
+            )
 
-        arena_yaml_path = os.path.join(rpath, 'arena_props.yaml')
-        # if os.path.isfile(arena_yaml_path):
-        #     arena_dict = fm2p.read_yaml(arena_yaml_path)
-        # else:
-        arena_dict = top_cam.track_arena()
-        arena_dict = fm2p.fix_dict_dtype(arena_dict, float)
-        fm2p.write_yaml(arena_yaml_path, arena_dict)
+            arena_yaml_path = os.path.join(rpath, 'arena_props.yaml')
+            # if os.path.isfile(arena_yaml_path):
+            #     arena_dict = fm2p.read_yaml(arena_yaml_path)
+            # else:
+            arena_dict = top_cam.track_arena()
+            arena_dict = fm2p.fix_dict_dtype(arena_dict, float)
+            fm2p.write_yaml(arena_yaml_path, arena_dict)
 
-        pxls2cm = arena_dict['pxls2cm']
-        top_xyl, top_tracking_dict = top_cam.track_body(pxls2cm)
+            pxls2cm = arena_dict['pxls2cm']
+            top_xyl, top_tracking_dict = top_cam.track_body(pxls2cm)
 
 
         print('  -> Measuring pupil orientation via ellipse fit.')
@@ -311,16 +320,6 @@ def preprocess(cfg_path=None, spath=None):
         )
         eyeStart = int(eyeStart)
         eyeEnd = int(eyeEnd)
-
-        if cfg['imu']:
-
-            print('  -> Reading IMU data in and performing sensor fusion.')
-
-            imu_df, imuT = fm2p.read_IMU(imu_vals, imu_timestamps)
-
-            print('  -> Aligning IMU to 2P and othe behavior data.')
-
-            imu_dict = fm2p.align_crop_IMU(imu_df, imuT, apply_t0, apply_tEnd, eyeT, twopT)
 
         print('  -> Running spike inference.')
 
@@ -366,45 +365,51 @@ def preprocess(cfg_path=None, spath=None):
             twop_dict['norm_dFF'] = np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
             twop_dict['denoised_dFF'] = denoised_dFF
             twop_dict['s2p_spks'] = sps
-            twop_dict['matlab_cellinds'] = np.array(usecells)
+            twop_dict['matlab_cellinds'] = kept_groups
             twop_dict['norm_spikes'] = fm2p.normalize_axonal_spikes(sps, cfg)
 
-        print('  -> Calculating retinocentric and egocentric orientations.')
-
-        # All values in units of pixels or degrees (not cm or rads)
-        learx = top_tracking_dict['lear_x']
-        leary = top_tracking_dict['lear_y']
-        rearx = top_tracking_dict['rear_x']
-        reary = top_tracking_dict['rear_y']
-        yaw = top_tracking_dict['head_yaw_deg']
         theta = np.rad2deg(ellipse_dict['theta'])
-        phi = np.rad2deg(ellipse_dict['phi'])
+        phi = - np.rad2deg(ellipse_dict['phi']) # sign flip added 9/15/25
+
+        if not sn:
+            print('  -> Calculating retinocentric and egocentric orientations.')
+
+            # All values in units of pixels or degrees (not cm or rads)
+            learx = top_tracking_dict['lear_x']
+            leary = top_tracking_dict['lear_y']
+            rearx = top_tracking_dict['rear_x']
+            reary = top_tracking_dict['rear_y']
+            yaw = top_tracking_dict['head_yaw_deg']
 
 
-        _len_diff = np.size(learx) - np.size(twop_dict['s2p_spks'], 1)
-        while _len_diff != 0:
-            if _len_diff > 0:
-                # top tracking is too long for spike data
-                learx = learx[:-1]
-                leary = leary[:-1]
-                rearx = rearx[:-1]
-                reary = reary[:-1]
-                yaw = yaw[:-1]
-            elif _len_diff < 0:
-                # spike data is too long for top tracking
-                twop_dict['twopT'] = twop_dict['twopT'][:-1]
-                twop_dict['raw_F0'] = twop_dict['raw_F0'][:-1]
-                twop_dict['raw_F'] = twop_dict['raw_F'][:-1]
-                twop_dict['norm_F'] = twop_dict['norm_F'][:-1]
-                twop_dict['raw_Fneu'] = twop_dict['raw_Fneu'][:-1]
-                twop_dict['raw_dFF'] = twop_dict['raw_dFF'][:-1]
-                twop_dict['norm_dFF'] = twop_dict['norm_dFF'][:-1]
-                twop_dict['denoised_dFF'] = twop_dict['denoised_dFF'][:-1]
-                twop_dict['s2p_spks'] = twop_dict['s2p_spks'][:-1]
             _len_diff = np.size(learx) - np.size(twop_dict['s2p_spks'], 1)
+            while _len_diff != 0:
+                if _len_diff > 0:
+                    # top tracking is too long for spike data
+                    learx = learx[:-1]
+                    leary = leary[:-1]
+                    rearx = rearx[:-1]
+                    reary = reary[:-1]
+                    yaw = yaw[:-1]
+                elif _len_diff < 0:
+                    # spike data is too long for top tracking
+                    twop_dict['twopT'] = twop_dict['twopT'][:-1]
+                    twop_dict['raw_F0'] = twop_dict['raw_F0'][:-1]
+                    twop_dict['raw_F'] = twop_dict['raw_F'][:-1]
+                    twop_dict['norm_F'] = twop_dict['norm_F'][:-1]
+                    twop_dict['raw_Fneu'] = twop_dict['raw_Fneu'][:-1]
+                    twop_dict['raw_dFF'] = twop_dict['raw_dFF'][:-1]
+                    twop_dict['norm_dFF'] = twop_dict['norm_dFF'][:-1]
+                    twop_dict['denoised_dFF'] = twop_dict['denoised_dFF'][:-1]
+                    twop_dict['s2p_spks'] = twop_dict['s2p_spks'][:-1]
+                _len_diff = np.size(learx) - np.size(twop_dict['s2p_spks'], 1)
 
-        headx = np.array([np.mean([rearx[f], learx[f]]) for f in range(len(rearx))])
-        heady = np.array([np.mean([reary[f], leary[f]]) for f in range(len(reary))])
+            headx = np.array([np.mean([rearx[f], learx[f]]) for f in range(len(rearx))])
+            heady = np.array([np.mean([reary[f], leary[f]]) for f in range(len(reary))])
+
+        if len(twop_dict['twopT']) == np.size(twop_dict['s2p_spks'], 1)+1:
+            twop_dict['twopT'] = twop_dict['twopT'][:-1]
+            twopT = twopT[:-1]
 
         eyeT = fm2p.read_timestamp_file(eyecam_video_timestamps, position_data_length=len(theta))
         theta_interp = fm2p.interpT(
@@ -418,15 +423,26 @@ def preprocess(cfg_path=None, spath=None):
             twopT
         )
 
-        # Calculate retinocentric and egocentric orientations
-        refframe_dict = fm2p.calc_reference_frames(
-            cfg,
-            headx,
-            heady,
-            yaw,
-            theta_interp,
-            arena_dict
-        )
+        if cfg['imu']:
+
+            print('  -> Reading IMU data in and performing sensor fusion.')
+
+            imu_df, imuT = fm2p.read_IMU(imu_vals, imu_timestamps)
+
+            print('  -> Aligning IMU to 2P and othe behavior data.')
+
+            imu_dict = fm2p.align_crop_IMU(imu_df, imuT, apply_t0, apply_tEnd, eyeT, twopT)
+
+        if not sn:
+            # Calculate retinocentric and egocentric orientations
+            refframe_dict = fm2p.calc_reference_frames(
+                cfg,
+                headx,
+                heady,
+                yaw,
+                theta_interp,
+                arena_dict
+            )
 
         if ltdk:
             print('  -> Using TTL to calculate light/dark state vector')
@@ -441,27 +457,38 @@ def preprocess(cfg_path=None, spath=None):
 
         print('  -> Saving preprocessed dataset to file.')
 
-        top_xyl_ = fm2p.to_dict_of_arrays(top_xyl)
+        if not sn:
+            top_xyl_ = fm2p.to_dict_of_arrays(top_xyl)
         eye_xyl_ = fm2p.to_dict_of_arrays(eye_xyl)
 
-        preprocessed_dict = {
-            **top_tracking_dict,
-            **top_xyl_,
-            **arena_dict,
-            **ellipse_dict,
-            **eye_xyl_,
-            **twop_dict,
-            **refframe_dict
-        }
+
+        if not sn:
+            preprocessed_dict = {
+                **top_tracking_dict,
+                **top_xyl_,
+                **arena_dict,
+                **ellipse_dict,
+                **eye_xyl_,
+                **twop_dict,
+                **refframe_dict
+            }
+        elif sn:
+            preprocessed_dict = {
+                **ellipse_dict,
+                **eye_xyl_,
+                **twop_dict
+            }
 
         preprocessed_dict['eyeT_startInd'] = eyeStart
         preprocessed_dict['eyeT_endInd'] = eyeEnd
-        preprocessed_dict['theta_interp'] = theta_interp
-        preprocessed_dict['phi_interp'] = phi_interp
-        preprocessed_dict['head_x'] = headx
-        preprocessed_dict['head_y'] = heady
+        
+        if not sn:
+            preprocessed_dict['theta_interp'] = theta_interp
+            preprocessed_dict['phi_interp'] = phi_interp
+            preprocessed_dict['head_x'] = headx
+            preprocessed_dict['head_y'] = heady
 
-        preprocessed_dict['ltdk'] = ltdk # was 'tldk', will need to build in a flag to make sure
+            preprocessed_dict['ltdk'] = ltdk # was 'tldk', will need to build in a flag to make sure
         # the one that was used in existing preprocessing files is found.
 
         if ltdk:
@@ -479,13 +506,23 @@ def preprocess(cfg_path=None, spath=None):
 
         # fm2p.run_preprocessing_diagnostics(preprocessed_dict, ltdk=ltdk)
 
+        # if not cfg['imu']:
+        peth_dict = fm2p.calc_PETHs(preprocessed_dict)
+        preprocessed_dict = {**preprocessed_dict, **peth_dict}
+
+        # elif cfg['imu']:
+        #     peth_dict = fm2p.calc_PETHs_IMU(preprocessed_dict)
+        #     preprocessed_dict = {**preprocessed_dict, **peth_dict}
+
+
         _savepath = os.path.join(rpath, '{}_preproc.h5'.format(full_rname))
         print('Writing preprocessed data to {}'.format(_savepath))
         fm2p.write_h5(_savepath, preprocessed_dict)
 
         # If a real config path was given, write some new data into the dictionary and then save a new preprocessed_config
         cfg['{}_preproc_file'.format(rname)] = _savepath
-        cfg['{}_topdown_video'.format(rname)] = topdown_video
+        if not sn:
+            cfg['{}_topdown_video'.format(rname)] = topdown_video
         cfg['{}_eye_video'.format(rname)] = eyecam_deinter_video
 
 
