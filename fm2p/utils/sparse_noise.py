@@ -10,7 +10,11 @@ import fm2p
 
 def measure_sparse_noise_receptive_fields(cfg, data):
 
-    stim_path = cfg['sparse_noise_stim_path']
+
+    if 'sparse_noise_stim_path' not in cfg.keys():
+        stim_path = 'T:/sparse_noise_sequence_v2.npy'
+    else:
+        stim_path = cfg['sparse_noise_stim_path']
     stimarr = np.load(stim_path)
     n_stim_frames = np.size(stimarr, 0)
 
