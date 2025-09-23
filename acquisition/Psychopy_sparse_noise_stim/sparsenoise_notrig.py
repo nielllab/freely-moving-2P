@@ -16,7 +16,7 @@ import serial
 
 
 # Parameters
-num_frames = 1000 # ~16 minutes
+num_frames = 2000 # ~30 minutes
 max_dots = 10
 diameter_range = (10, 400)
 on_time = 0.5
@@ -24,7 +24,7 @@ off_time = 0.5
 num_repeats = 1
 shuffle = True
 save_frames = True
-output_file = 'T:/sparse_noise_sequence_v2.npy'
+output_file = 'D:/sparse_noise_sequence_v3.npy'
 
 # Arduino serial settings
 #arduino_port = 'COM3'

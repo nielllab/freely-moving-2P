@@ -16,7 +16,7 @@ import serial
 
 
 # Parameters
-num_frames = 1000 # ~16 minutes
+num_frames = 2000 # ~30 minutes
 max_dots = 10
 diameter_range = (10, 400)
 on_time = 0.5
@@ -24,7 +24,7 @@ off_time = 0.5
 num_repeats = 1
 shuffle = True
 save_frames = True
-output_file = 'sparse_noise_sequence.npy'
+#output_file = 'sparse_noise_sequence.npy'
 
 # Arduino serial settings
 arduino_port = 'COM3'
@@ -37,7 +37,8 @@ win = visual.Window(
     color=[0, 0, 0],
     units='pix',
     fullscr=True,
-    checkTiming=False
+    checkTiming=False,
+    screen=1
 )
 monitor_x, monitor_y = win.size[0] // 2, win.size[1] // 2
 
@@ -130,10 +131,10 @@ for rep in range(num_repeats):
               f'onset={stim_onset:.3f}, offset={stim_offset:.3f}')
 
 # Save frames to .npy
-if save_frames and recorded_frames:
-    recorded_frames = np.stack(recorded_frames, axis=0)
-    np.save(output_file, recorded_frames)
-    print(f'Saved {recorded_frames.shape[0]} frames to {output_file}')
+#if save_frames and recorded_frames:
+#    recorded_frames = np.stack(recorded_frames, axis=0)
+#    np.save(output_file, recorded_frames)
+#    print(f'Saved {recorded_frames.shape[0]} frames to {output_file}')
 
 win.close()
 ser.close()
