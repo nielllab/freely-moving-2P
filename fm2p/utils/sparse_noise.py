@@ -12,7 +12,7 @@ def measure_sparse_noise_receptive_fields(cfg, data):
 
 
     if 'sparse_noise_stim_path' not in cfg.keys():
-        stim_path = 'T:/sparse_noise_sequence_v2.npy'
+        stim_path = 'T:/sparse_noise_sequence_v3.npy'
     else:
         stim_path = cfg['sparse_noise_stim_path']
     stimarr = np.load(stim_path)
@@ -45,6 +45,7 @@ def measure_sparse_noise_receptive_fields(cfg, data):
 
     # sum spikes that occur during a single frame
     # also sum spikes in each ISI period
+    print('  -> Summing spikes during stimulus and ISI periods.')
     for c in tqdm(range(np.size(norm_spikes,0))):
         for i,t in enumerate(stimT[:-1]): # in sec
             start_win, _ = fm2p.find_closest_timestamp(twopT, t)
@@ -73,6 +74,7 @@ def measure_sparse_noise_receptive_fields(cfg, data):
         stimX
     ])
 
+    print('  -> Calculating spike-triggered averages.')
     for c in tqdm(range(np.size(norm_spikes, 0))):
         sp = summed_stim_spikes[c,:].copy()
         sp[np.isnan(sp)] = 0
@@ -84,9 +86,9 @@ def measure_sparse_noise_receptive_fields(cfg, data):
         )
         nsp = np.nansum(sp)
 
-        light_sta_flat = light_sta_flat / nsp
-        light_sta_flat = light_sta_flat - np.nanmean(light_sta_flat)
-        sta[c,0,:,:] = light_sta_flat
+        light_sta = light_sta / nsp
+        light_sta = light_sta - np.nanmean(light_sta)
+        sta[c,0,:,:] = light_sta
 
         dark_sta_flat = flat_dark_stim.T @ sp
         dark_sta = np.reshape(
@@ -95,15 +97,9 @@ def measure_sparse_noise_receptive_fields(cfg, data):
         )
         nsp = np.nansum(sp)
 
-        dark_sta_flat = dark_sta_flat / nsp
-        dark_sta_flat = dark_sta_flat - np.nanmean(dark_sta_flat)
-        sta[c,1,:,:] = dark_sta_flat
-
-    # calculate the population receptive field
-    # pop_sta = np.sum(sta, axis=0)
-
-    # Would it be meaningful to calculate a spontaneous rate to the ISI?
-    # Could try this later...
+        dark_sta = dark_sta / nsp
+        dark_sta = dark_sta - np.nanmean(dark_sta)
+        sta[c,1,:,:] = dark_sta
 
     return sta
 

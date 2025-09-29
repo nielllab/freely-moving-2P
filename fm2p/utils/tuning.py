@@ -473,4 +473,15 @@ def calc_multicell_modulation(tunings, spikes, thresh=0.33):
 
 
 
+def calc_radhist(orientation, depth, spikes, xbins, ybins):
+    
+    occ_hist, _, _ = np.histogram2d(orientation, depth,
+                                    bins=(xbins, ybins))
+    sp_hist, _, _ = np.histogram2d(orientation, depth,
+                                   bins=(xbins, ybins), weights=spikes)
 
+    hist = sp_hist.copy() / occ_hist.copy()
+    hist[np.isnan(hist)] = 0.
+    hist[~np.isfinite(hist)] = 0.
+
+    return hist

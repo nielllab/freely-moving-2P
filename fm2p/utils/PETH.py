@@ -281,9 +281,6 @@ def calc_PETHs(data):
 
 def calc_PETHs_IMU(data):
 
-    theta_interp = data['theta']
-    phi_interp = data['phi']
-
     theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
     phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
     eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
@@ -331,52 +328,30 @@ def calc_PETHs_IMU(data):
     rightward_compensatory_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in rightward_compensatory_onsets if not np.isnan(t)])
 
     win_frames = np.arange(-15,16)
-    _, down_PETHs = calc_hist_PETH(data['norm_spikes'], downward_onsets, win_frames)
+    _, left_gaze_PETHs = calc_hist_PETH(data['norm_spikes'], leftward_gazeshift_inds, win_frames)
+    _, right_gaze_PETHs = calc_hist_PETH(data['norm_spikes'], rightward_gazeshift_inds, win_frames)
+    _, left_comp_PETHs = calc_hist_PETH(data['norm_spikes'], leftward_compensatory_inds, win_frames)
+    _, right_comp_PETHs = calc_hist_PETH(data['norm_spikes'], rightward_compensatory_inds, win_frames)
 
-    normR = norm_psth(right_PETHs)
+    norm_left_gaze = norm_psth(left_gaze_PETHs)
+    norm_right_gaze = norm_psth(right_gaze_PETHs)
+    norm_left_comp = norm_psth(left_comp_PETHs)
+    norm_right_comp = norm_psth(right_comp_PETHs)
 
     peth_dict = {
-        'leftward_onsets': leftward_onsets,
-        'rightward_onsets': rightward_onsets,
-        'upward_onsets': upward_onsets,
-        'downward_onsets': downward_onsets,
-        'right_theta_movement_inds': right_theta_movement_inds,
-        'left_theta_movement_inds': left_theta_movement_inds,
-        'down_phi_movement_inds': down_phi_movement_inds,
-        'up_phi_movement_inds': up_phi_movement_inds,
-        'right_PETHs': right_PETHs,
-        'left_PETHs': left_PETHs,
-        'up_PETHs': up_PETHs,
-        'down_PETHs': down_PETHs,
-        'norm_right_PETHs': normR,
-        'norm_left_PETHs': normL,
-        'norm_up_PETHs': normU,
-        'norm_down_PETHs': normD
+        'left_gaze_onsets': leftward_gazeshift_inds,
+        'right_gaze_onsets': rightward_gazeshift_inds,
+        'left_comp_onsets': leftward_compensatory_inds,
+        'right_comp_onsets': rightward_compensatory_inds,
+        'right_gaze_PETHs': right_gaze_PETHs,
+        'left_gaze_PETHs': left_gaze_PETHs,
+        'right_comp_PETHs': right_comp_PETHs,
+        'left_comp_PETHs': left_comp_PETHs,
+        'norm_right_gaze_PETHs': norm_left_gaze,
+        'norm_left_gaze_PETHs': norm_right_gaze,
+        'norm_right_comp_PETHs': norm_left_comp,
+        'norm_left_comp_PETHs': norm_right_comp
     }
 
+    return peth_dict
 
-def calc_cont_PETH(spikes, event_frames, window_bins):
-    # Calculate a PETH using continuous spiek times.
-    
-    spikes = np.asarray(spikes)
-    event_frames = np.asarray(event_frames)
-    window_bins = np.asarray(window_bins)
-
-    n_cells, n_frames = spikes.shape
-    n_events = len(event_frames)
-    n_bins = len(window_bins)
-
-    psth = np.zeros((n_cells, n_events, n_bins))
-
-    for i, event in enumerate(event_frames):
-        # Calculate absolute indices for this event
-        indices = event + window_bins
-        # Clip indices to stay within valid range
-        valid_mask = (indices >= 0) & (indices < n_frames)
-        valid_indices = (indices[valid_mask]).astype(int)
-        if len(valid_indices) > 0:
-            psth[:, i, valid_mask] = spikes[:, valid_indices]
-
-    mean_psth = psth.mean(axis=1)  # average across events
-
-    return psth, mean_psth

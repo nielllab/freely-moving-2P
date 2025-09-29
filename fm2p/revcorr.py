@@ -43,7 +43,10 @@ def calc_revcorr(preproc_path, axons=False):
         If True, use axon-specific logic (not currently used).
     """
     # Load preprocessed data
-    data = fm2p.read_h5(preproc_path)
+    if type(preproc_path) == str:
+        data = fm2p.read_h5(preproc_path)
+    elif type(preproc_path) == dict:
+        data = preproc_path.copy()
 
     spikes = data['norm_spikes'].copy()
 
@@ -186,7 +189,7 @@ def calc_revcorr(preproc_path, axons=False):
 
 
 
-def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
+def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False, save=False):
     """
     Compute tuning reliability and modulation for a single preprocessed file with light/dark periods.
 
@@ -197,9 +200,12 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
     restrict_by_deviation : bool, optional
         If True, restrict analysis to frames with large theta deviation.
     """
-    # Load preprocessed data
-    data = fm2p.read_h5(preproc_path)
 
+    # Load preprocessed data
+    if type(preproc_path) == str:
+        data = fm2p.read_h5(preproc_path)
+    elif type(preproc_path) == dict:
+        data = preproc_path.copy()
 
     spikes = data['norm_spikes'].copy()
 
@@ -219,6 +225,15 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
     ltdk = data['ltdk_state_vec'].copy()
 
     twopT = data['twopT'].copy()
+
+    roll = data['roll_twop_interp'].copy()
+    pitch = data['pitch_twop_interp'].copy()
+    acc_x = data['acc_x_twop_interp'].copy()
+    acc_y = data['acc_y_twop_interp'].copy()
+    acc_z = data['acc_z_twop_interp'].copy()
+    gyro_x = data['gyro_x_twop_interp'].copy()
+    gyro_y = data['gyro_y_twop_interp'].copy()
+    gyro_z = data['gyro_z_twop_interp'].copy()
     
     if restrict_by_deviation:
         theta_cent = theta.copy()
@@ -245,33 +260,75 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
     ]
     assert len(set(len_check)) == 1, 'Unequal lengths along time axis. Lenghts are {}'.format(len_check)
 
+    lbound = 10
+    ubound = 90
 
     retino_bins = np.linspace(-180, 180, 27)
     ego_bins = np.linspace(-180, 180, 27)
     yaw_bins = np.linspace(-180, 180, 27)
     theta_bins = np.linspace(
-        np.nanpercentile(theta, 5),
-        np.nanpercentile(theta, 95),
+        np.nanpercentile(theta, lbound),
+        np.nanpercentile(theta, ubound),
         13
     )
     phi_bins = np.linspace(
-        np.nanpercentile(phi, 5),
-        np.nanpercentile(phi, 95),
+        np.nanpercentile(phi, lbound),
+        np.nanpercentile(phi, ubound),
         13
     )
     dist_bins = np.linspace(
-        np.nanpercentile(distance, 5),
-        np.nanpercentile(distance, 95),
+        np.nanpercentile(distance, lbound),
+        np.nanpercentile(distance, ubound),
         13
     )
     cdist_bins = np.linspace(
-        np.nanpercentile(cdistance, 5),
-        np.nanpercentile(cdistance, 95),
+        np.nanpercentile(cdistance, lbound),
+        np.nanpercentile(cdistance, ubound),
         13
     )
     psize_bins = np.linspace(
-        np.nanpercentile(pillar_size, 5),
-        np.nanpercentile(pillar_size, 95),
+        np.nanpercentile(pillar_size, lbound),
+        np.nanpercentile(pillar_size, ubound),
+        13
+    )
+    roll_bins = np.linspace(
+        np.nanpercentile(roll, lbound),
+        np.nanpercentile(roll, ubound),
+        13
+    )
+    pitch_bins = np.linspace(
+        np.nanpercentile(pitch, lbound),
+        np.nanpercentile(pitch, ubound),
+        13
+    )
+    acc_x_bins = np.linspace(
+        np.nanpercentile(acc_x, lbound),
+        np.nanpercentile(acc_x, ubound),
+        13
+    )
+    acc_y_bins = np.linspace(
+        np.nanpercentile(acc_y, lbound),
+        np.nanpercentile(acc_y, ubound),
+        13
+    )
+    acc_z_bins = np.linspace(
+        np.nanpercentile(acc_z, lbound),
+        np.nanpercentile(acc_z, ubound),
+        13
+    )
+    gyro_x_bins = np.linspace(
+        np.nanpercentile(gyro_x, lbound),
+        np.nanpercentile(gyro_x, ubound),
+        13
+    )
+    gyro_y_bins = np.linspace(
+        np.nanpercentile(gyro_y, lbound),
+        np.nanpercentile(gyro_y, ubound),
+        13
+    )
+    gyro_z_bins = np.linspace(
+        np.nanpercentile(gyro_z, lbound),
+        np.nanpercentile(gyro_z, ubound),
         13
     )
 
@@ -299,16 +356,39 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
         'distance_to_pillar': {
             'vec': distance,
             'bins': dist_bins
+        },
+        'roll': {
+            'vec': roll,
+            'bins': roll_bins
+        },
+        'pitch': {
+            'vec': pitch,
+            'bins': pitch_bins
+        },
+        'acc_x': {
+            'vec': acc_x,
+            'bins': acc_x_bins
+        },
+        'acc_y': {
+            'vec': acc_y,
+            'bins': acc_y_bins
+        },
+        'acc_z': {
+            'vec': acc_z,
+            'bins': acc_z_bins
+        },
+        'gyro_x': {
+            'vec': gyro_x,
+            'bins': gyro_x_bins
+        },
+        'gyro_y': {
+            'vec': gyro_y,
+            'bins': gyro_y_bins
+        },
+        'gyro_z': {
+            'vec': gyro_z,
+            'bins': gyro_z_bins
         }
-        # 'distance_to_center': {
-        #     'vec': cdistance,
-        #     'bins': cdist_bins
-        # },
-        # 'pillar_size': {
-        #     'vec': pillar_size,
-        #     'bins': psize_bins
-        # }
-
     }
 
     full_reliability_dict = {}
@@ -396,12 +476,15 @@ def calc_revcorr_ltdk(preproc_path, restrict_by_deviation=False):
 
     # full_reliability_dict['behavior_inputs'] = vardict
 
-    savedir = os.path.split(preproc_path)[0]
-    basename = os.path.split(preproc_path)[1][:-11]
-    savepath = os.path.join(savedir, '{}_revcorr_results_v4.h5'.format(basename))
-    fm2p.write_h5(savepath, full_reliability_dict)
+    if save:
+        savedir = os.path.split(preproc_path)[0]
+        basename = os.path.split(preproc_path)[1][:-11]
+        savepath = os.path.join(savedir, '{}_revcorr_results_v4.h5'.format(basename))
+        fm2p.write_h5(savepath, full_reliability_dict)
 
-    print('Saved {}'.format(savepath))
+        print('Saved {}'.format(savepath))
+
+    return full_reliability_dict
 
 
 def revcorr():
@@ -441,8 +524,11 @@ def revcorr():
         preproc_path = fm2p.find('*_preproc.h5', os.path.join(cfg['spath'], rec), MR=True)
 
         if cfg['ltdk']:
+
             calc_revcorr_ltdk(preproc_path)
+        
         elif not cfg['ltdk']:
+
             calc_revcorr(preproc_path, axons=cfg['axons'])
 
 

@@ -192,4 +192,7 @@ def align_crop_IMU(df, imuT, apply_t0, apply_tEnd, eyeT, twopT):
         outputs['{}_eye_interp'.format(k)] = v_eye_interp
         outputs['{}_twop_interp'.format(k)] = v_twop_interp
 
+    outputs['imuT_raw'] = imuT
+    outputs['imuT_trim'] = imuT[imuStart:imuEnd] - imuT
+
     return outputs

@@ -204,7 +204,11 @@ def mapRF():
 
     sta = fm2p.measure_sparse_noise_receptive_fields(cfg, pdata)
 
-    np.save(os.path.join(cfg['recdir'], 'sparse_noise_receptive_fields.npy'), sta)
+    rec_dir = os.path.split(pdata_path)[0]
+
+    savepath = os.path.join(rec_dir, 'sparse_noise_receptive_fields.npy')
+    np.save(savepath, sta)
+    print('Writing file to {}'.format(savepath))
 
 
 if __name__ == '__main__':

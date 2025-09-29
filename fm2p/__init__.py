@@ -260,7 +260,8 @@ from .utils.PETH import (
     calc_PETHs,
     drop_nearby_events,
     drop_repeat_events,
-    calc_PETH_mod_ind
+    calc_PETH_mod_ind,
+    calc_PETHs_IMU
 )
 
 from .utils.sparse_noise import (
