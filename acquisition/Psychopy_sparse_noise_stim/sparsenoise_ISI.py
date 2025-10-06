@@ -5,9 +5,8 @@ version 2025.1.1 from https://www.psychopy.org/download.html
 Arduino Uno R3 must be attached to COM3 and have a BNC jack
 connected to Analog pin 0.
 Run the script from the Psychopy GUI.
-Uses non-overlapping spots. ISI removed.
 
-Author: DMM, last modified Oct. 2025
+Author: DMM, last modified Sept. 2025
 """
 
 
@@ -16,45 +15,21 @@ import numpy as np
 import serial
 
 
-def non_overlapping_pos(existing_dots, new_diameter, max_attempts=1000):
-    """
-    Generate a random (x, y) position that doesn't overlap with existing dots.
-    """
-    new_radius = new_diameter / 2
-    for _ in range(max_attempts):
-        pos_x = np.random.uniform(-monitor_x + new_radius, monitor_x - new_radius)
-        pos_y = np.random.uniform(-monitor_y + new_radius, monitor_y - new_radius)
-        # Check overlap
-        overlap = False
-        for dot in existing_dots:
-            old_x, old_y = dot['pos']
-            old_r = dot['diameter'] / 2
-            dist = np.hypot(pos_x - old_x, pos_y - old_y)
-            if dist < (new_radius + old_r):
-                overlap = True
-                break
-        if not overlap:
-            return pos_x, pos_y
-
-    return pos_x, pos_y
-
-
 # Parameters
-num_frames = 5000 # 5000 frames == ~41 minutes
-max_dots = 8
-diameter_range = (10, 400) # bwtween 1 and 40 visual degrees
-on_time = 0.333 # 3 Hz
+num_frames = 2000 # ~30 minutes
+max_dots = 10
+diameter_range = (10, 400)
+on_time = 0.5
+off_time = 0.5
 num_repeats = 1
 shuffle = True
 save_frames = True
-output_file = 'D:/sparse_noise_sequence_v4.npy'
-use_trigger = False
+#output_file = 'sparse_noise_sequence.npy'
 
-if use_trigger:
-    # Arduino serial settings
-    arduino_port = 'COM3'
-    baud_rate = 115200
-    trigger_threshold = 512 # analog value threshold (0-1023)
+# Arduino serial settings
+arduino_port = 'COM3'
+baud_rate = 115200
+trigger_threshold = 512 # analog value threshold (0-1023)
 
 # Setup window
 win = visual.Window(
@@ -78,7 +53,8 @@ for _ in range(num_frames):
     for _ in range(n_dots):
         diameter = np.random.uniform(*diameter_range)
         color = np.random.choice([1, -1])
-        pos_x, pos_y = non_overlapping_pos(frame_dots, diameter)
+        pos_x = np.random.uniform(-monitor_x, monitor_x)
+        pos_y = np.random.uniform(-monitor_y, monitor_y)
         frame_dots.append({
             'diameter': diameter,
             'color': color,
@@ -89,27 +65,28 @@ for _ in range(num_frames):
 if shuffle:
     np.random.shuffle(stim_instructions)
 
-if use_trigger:
-    # Open serial to Arduino
-    ser = serial.Serial(arduino_port, baud_rate, timeout=1)
-    core.wait(2.0)  # wait for Arduino reset
+# Open serial to Arduino
+ser = serial.Serial(arduino_port, baud_rate, timeout=1)
+core.wait(2.0)  # wait for Arduino reset
 
-    print('Waiting for analog trigger on Arduino A0...')
-    triggered = False
-    # triggered = True
-    while not triggered:
-        if event.getKeys(['escape']):
-            win.close()
-            core.quit()
-        line = ser.readline().decode('utf-8').strip()
-        if line.isdigit():
-            value = int(line)
-            if value <= trigger_threshold:
-                triggered = True
-                print(f'Trigger received (value={value}). Starting stimulus.')
+print('Waiting for analog trigger on Arduino A0...')
+triggered = False
+# triggered = True
+while not triggered:
+    if event.getKeys(['escape']):
+        win.close()
+        core.quit()
+    line = ser.readline().decode('utf-8').strip()
+    if line.isdigit():
+        value = int(line)
+        if value <= trigger_threshold:
+            triggered = True
+            print(f'Trigger received (value={value}). Starting stimulus.')
 
+# Prepare frame recording
 recorded_frames = []
 
+# Run stimulus
 history_clock = core.MonotonicClock()
 
 for rep in range(num_repeats):
@@ -121,7 +98,6 @@ for rep in range(num_repeats):
             if event.getKeys(['escape']):
                 win.close()
                 core.quit()
-
             # Draw all dots
             for dot in frame_dots:
                 stim = visual.Circle(
@@ -143,22 +119,22 @@ for rep in range(num_repeats):
             frame_np = np.asarray(frame)
             recorded_frames.append(frame_np)
 
-        # ISI removed
         # Inter-frame gray screen
-        # if off_time > 0:
-        #     if event.getKeys(['escape']):
-        #         win.close()
-        #         core.quit()
-        #     win.flip()
-        #     core.wait(off_time)
+        if off_time > 0:
+            if event.getKeys(['escape']):
+                win.close()
+                core.quit()
+            win.flip()
+            core.wait(off_time)
 
         print(f'Frame {i}: {len(frame_dots)} dots, '
               f'onset={stim_onset:.3f}, offset={stim_offset:.3f}')
 
-if save_frames and recorded_frames:
-   recorded_frames = np.stack(recorded_frames, axis=0)
-   np.save(output_file, recorded_frames)
-   print(f'Saved {recorded_frames.shape[0]} frames to {output_file}')
+# Save frames to .npy
+#if save_frames and recorded_frames:
+#    recorded_frames = np.stack(recorded_frames, axis=0)
+#    np.save(output_file, recorded_frames)
+#    print(f'Saved {recorded_frames.shape[0]} frames to {output_file}')
 
 win.close()
 ser.close()
