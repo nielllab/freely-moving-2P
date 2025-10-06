@@ -280,6 +280,8 @@ class BoundaryTuning:
             if self.pupil_ang is None:
                 self.calc_ego()
             angle_trace = self.ego_ang
+        elif angle == 'retino':
+            angle_trace = self.data['retinocentric'] + 180.
 
         x_trace = self.data['head_x'].copy() / self.data['pxls2cm']
         y_trace = self.data['head_y'].copy() / self.data['pxls2cm']

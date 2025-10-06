@@ -277,3 +277,10 @@ from .split_suite2p import (
     split_suite2p_npy,
     count_tif_frames
 )
+
+from .polar_revcorr import (
+    polar_revcorr,
+    polar_histogram2d,
+    smooth_2d_rate_maps
+)
+

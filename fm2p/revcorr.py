@@ -46,7 +46,7 @@ def calc_revcorr(preproc_path, axons=False):
     if type(preproc_path) == str:
         data = fm2p.read_h5(preproc_path)
     elif type(preproc_path) == dict:
-        data = preproc_path.copy()
+        data = preproc_path
 
     spikes = data['norm_spikes'].copy()
 
