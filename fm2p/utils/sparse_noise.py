@@ -8,18 +8,17 @@ from tqdm import tqdm
 import fm2p
 
 
-def measure_sparse_noise_receptive_fields(cfg, data):
-
+def measure_sparse_noise_receptive_fields(cfg, data, ISI=False):
 
     if 'sparse_noise_stim_path' not in cfg.keys():
-        stim_path = 'T:/sparse_noise_sequence_v3.npy'
+        stim_path = 'T:/sparse_noise_sequence_v4.npy'
     else:
         stim_path = cfg['sparse_noise_stim_path']
     stimarr = np.load(stim_path)
     n_stim_frames = np.size(stimarr, 0)
 
-    light_stim = stimarr.copy()[:,:,:,0]
-    dark_stim = stimarr.copy()[:,:,:,0]
+    light_stim = stimarr.copy()[:,:,:]
+    dark_stim = stimarr.copy()[:,:,:]
 
     light_stim[light_stim < 129] = 0
     light_stim[light_stim > 129] = 1
@@ -29,8 +28,11 @@ def measure_sparse_noise_receptive_fields(cfg, data):
     
     twopT = data['twopT']
     # stim will end after twop has already ended
-    stimT = np.arange(0, n_stim_frames, 1) # 1000 frames presented for 0.5on, 0.5 off (1.0 sec total)
-    isiT = np.arange(0.5, n_stim_frames, 1)
+    if ISI:
+        stimT = np.arange(0, n_stim_frames, 1)
+        isiT = np.arange(0.5, n_stim_frames, 1)
+    else:
+        stimT = np.arange(0, n_stim_frames, 0.333)
 
     norm_spikes = data['norm_spikes'].copy()
 
@@ -38,21 +40,33 @@ def measure_sparse_noise_receptive_fields(cfg, data):
         np.size(norm_spikes, 0),
         np.size(stimT)
     ]) * np.nan
-    summed_isi_spikes = np.zeros([
-        np.size(norm_spikes, 0),
-        np.size(stimT)
-    ]) * np.nan
 
-    # sum spikes that occur during a single frame
-    # also sum spikes in each ISI period
-    print('  -> Summing spikes during stimulus and ISI periods.')
-    for c in tqdm(range(np.size(norm_spikes,0))):
-        for i,t in enumerate(stimT[:-1]): # in sec
-            start_win, _ = fm2p.find_closest_timestamp(twopT, t)
-            end_win, _ = fm2p.find_closest_timestamp(twopT, isiT[i])
-            next_win, _ = fm2p.find_closest_timestamp(twopT, stimT[i+1])
-            summed_stim_spikes[c,i] = np.sum(norm_spikes[c, start_win:end_win])
-            summed_isi_spikes[c,i] = np.sum(norm_spikes[c, end_win:next_win])
+    if ISI:
+        summed_isi_spikes = np.zeros([
+            np.size(norm_spikes, 0),
+            np.size(stimT)
+        ]) * np.nan
+
+    if ISI:
+
+        print('  -> Summing spikes during stimulus and ISI periods.')
+        for c in tqdm(range(np.size(norm_spikes,0))):
+            for i,t in enumerate(stimT[:-1]): # in sec
+                start_win, _ = fm2p.find_closest_timestamp(twopT, t)
+                end_win, _ = fm2p.find_closest_timestamp(twopT, isiT[i])
+                next_win, _ = fm2p.find_closest_timestamp(twopT, stimT[i+1])
+                summed_stim_spikes[c,i] = np.sum(norm_spikes[c, start_win:end_win])
+                summed_isi_spikes[c,i] = np.sum(norm_spikes[c, end_win:next_win])
+
+    else:
+
+        # TODO: test different lags and see what works best, prob. ~500 msec
+        print('  -> Summing spikes during stimulus (no ISI)')
+        for c in tqdm(range(np.size(norm_spikes,0))):
+            for i,t in enumerate(stimT[:-1]): # in sec
+                start_win, _ = fm2p.find_closest_timestamp(twopT, t)
+                next_win, _ = fm2p.find_closest_timestamp(twopT, stimT[i+1])
+                summed_stim_spikes[c,i] = np.sum(norm_spikes[c, start_win:end_win])
 
     nFrames, stimY, stimX, _ = np.shape(stimarr)
 
