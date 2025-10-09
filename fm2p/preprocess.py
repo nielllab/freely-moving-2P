@@ -353,7 +353,7 @@ def preprocess(cfg_path=None, spath=None):
                 spikes=spks,
                 iscell=iscell
             )
-            twop_dict = twop_recording.calc_dFF(neu_correction=0.7, oasis=False)
+            twop_dict = twop_recording.calc_dFF(neu_correction=0.7, use_oasis=True)
             dFF_transients = twop_recording.calc_dFF_transients()
             # Set a maximum spike rate for each cell, then normalize spikes
             normspikes = twop_recording.normalize_spikes()
