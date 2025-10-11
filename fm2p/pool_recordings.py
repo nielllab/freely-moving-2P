@@ -7,6 +7,8 @@ from tqdm import tqdm
 
 
 def make_filler_series(nc, ni):
+    # nc is number of number of cells
+    # ni is number of entries of the object
     s = pd.Series(np.zeros(nc))
     for i in s.index.values:
         s.iloc[i] = (np.zeros(ni)*np.nan).astype(object)
@@ -145,7 +147,6 @@ def pool_recordings():
         }
     ]
     
-
     merged_df = pd.DataFrame()
 
     for i, v in tqdm(enumerate(rec_list)):
@@ -172,27 +173,11 @@ def pool_recordings():
 
         df = pd.DataFrame()
 
-        df['base_name'] = base_name
-        df['recnum'] = rnum
-        df['animal'] = animal
-        df['date'] = date
-        df['dir'] = dir_
-
         n_cells = np.size(preproc_data['norm_spikes'], 0)
 
         for c in range(n_cells):
             calc_heatmap(preproc_data, i)
 
-        # df['theta_light_GLMweights'] = glm_data['pupil_light']['weights'][1:,0]
-        # df['phi_light_GLMweights'] = glm_data['pupil_light']['weights'][1:,1]
-        # df['theta_dark_GLMweights'] = glm_data['pupil_dark']['weights'][1:,0]
-        # df['phi_dark_GLMweights'] = glm_data['pupil_dark']['weights'][1:,1]
-
-        # df['theta_light_RMSE'] = rmse(glm_data['pupil_light']['y_test'][0,:], glm_data['pupil_light']['y_hat'][0,:])
-        # df['phi_light_RMSE'] = rmse(glm_data['pupil_light']['y_test'][1,:], glm_data['pupil_light']['y_hat'][1,:])
-        # df['theta_dark_RMSE'] = rmse(glm_data['pupil_dark']['y_test'][0,:], glm_data['pupil_dark']['y_hat'][0,:])
-        # df['phi_dark_RMSE'] = rmse(glm_data['pupil_dark']['y_test'][1,:], glm_data['pupil_dark']['y_hat'][1,:])
-        
         emptyseries = make_filler_series(n_cells, 12)
 
         for state in ['light', 'dark']:
@@ -248,16 +233,70 @@ def pool_recordings():
             df['yloc'].iloc[c] = np.median(preproc_data['cell_y_pix'][str(c)])
 
         df['cell_num'] = df.index.values
-        # df['full_name'] = '_'.join([
-        #     os.path.split(tiled_GLM[i])[1].split('_')[0],
-        #     os.path.split(tiled_GLM[i])[1].split('_')[2],
-        #     '_'.join(os.path.split(tiled_GLM[i])[1].split('_')[3:5]),
-        # ])
         df['ML_offset'] = - ML*100
         df['AP_offset'] = AP*100
+
+        df['base_name'] = base_name
+        df['recnum'] = rnum
+        df['animal'] = animal
+        df['date'] = date
+        df['dir'] = dir_
+
+        n_frames = np.size(preproc_data['norm_spikes'], 1)
+
+        s_nspikes = make_filler_series(len(df), n_frames)
+        s_rspikes = make_filler_series(len(df), n_frames)
+
+        for c in range(n_cells):
+            s_nspikes.iloc[c] = (preproc_data['norm_spikes'][c,:]).astype(object)
+            s_rspikes.iloc[c] = (preproc_data['s2p_spks'][c,:]).astype(object)
+
+        vars_to_add = [
+            'ltdk_state_vec',
+            'head_yaw_deg',
+            'retinocentric',
+            'egocentric',
+            'head_x',
+            'head_y',
+            'longaxis',
+            'norm_dFF',
+            'theta_interp',
+            'phi_interp',
+            'raw_F',
+            'twopT',
+        ]
+        for var in vars_to_add:
+            s = make_filler_series(len(df), n_frames)
+            for c in range(n_cells):
+                s.iloc[0] = (preproc_data[var]).astype(object)
+            df[var] = s
+
+        vars_to_add = [
+            'theta',
+            'phi',
+            'eyeT' # ,
+            # 'rightward_onsets',
+            # 'leftward_onsets',
+            # 'upward_onsets',
+            # 'downward_onsets'
+        ]
+        for var in vars_to_add:
+            s = make_filler_series(len(df), len(preproc_data[var]))
+            for c in range(n_cells):
+                s.iloc[0] = (preproc_data[var]).astype(object)
+            df[var] = s
 
         merged_df = pd.concat([merged_df, df], axis=0)
 
     merged_index = merged_df.reset_index()
 
-    merged_index = pd.read_hdf(r'K:\Mini2P\merged_V1PPC_dataset_251010.h5')
+    fm2p.write_group_h5(
+        merged_index,
+        r'K:\Mini2P\merged_V1PPC_dataset_w251010b.h5',
+        repair_overflow=True
+    )
+
+    # merged_index = pd.read_hdf(r'K:\Mini2P\merged_V1PPC_dataset_251010.h5')
+
+if __name__ == '__main__':
+    pool_recordings()
