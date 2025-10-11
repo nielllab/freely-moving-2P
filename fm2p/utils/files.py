@@ -25,7 +25,7 @@ write_yaml(path, contents)
 Author: DMM, 2024
 """
 
-
+import json
 import yaml
 import h5py
 import datetime
@@ -210,3 +210,174 @@ def write_yaml(path, contents):
     with open(path, 'w') as outfile:
         yaml.dump(contents, outfile, default_flow_style=False)
 
+
+
+def write_group_h5(df, savepath, repair_overflow=False):
+    """ Use pandas .to_hdf() method for multiple recordings.
+    
+    This is just a wrapper function to make sure it is
+    handled in the same each time. The dataframe will be split
+    by the column 'session'. Each unqiue session will be put
+    into its own key of the h5 file.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataframe to be saved.
+    savepath : str
+        Path to the .h5 file.
+
+    """
+
+    if repair_overflow:
+        df = normalize_for_hdf(fix_overflow_columns(df))
+
+    split_key = 'base_name'
+    split_list = df[split_key].unique()
+
+    for i, sname in enumerate(split_list):
+
+        print('Writing block {} of {} ({})'.format(i, len(split_list), sname))
+        
+        df[df[split_key]==sname].to_hdf(savepath, sname, mode='a')
+
+
+def get_group_h5_keys(savepath):
+    """ Get the keys of a group h5 file.
+
+    This will list the keys (i.e. the session names) of an h5 file
+    written by the function write_group_h5 (above). It does not need
+    to read the entire file into memory to check these values.
+
+    Parameters
+    ----------
+    savepath : str
+        Path to the .h5 file.
+    
+    Returns
+    -------
+    keys : list
+        List of keys (i.e. session names) in the h5 file.
+
+    """
+
+    with pd.HDFStore(savepath) as hdf:
+        
+        keys = [k.replace('/','') for k in hdf.keys()]
+
+    return keys
+
+
+def read_group_h5(path, keys=None):
+    """ Read a group h5 file.
+
+    This will read in a group h5 file written by the function
+    write_group_h5 (above). It will read in all keys and stack
+    them into a single dataframe. Alternatively, you can specify
+    a list of keys to read in from the keys present, and only those
+    recordings will be read into memory and stacked together.
+    
+    Parameters
+    ----------
+    path : str
+        Path to the .h5 file.
+    keys : list or str (optional).
+        List of keys (i.e. session names) in the h5 file. If None,
+        all keys will be read in.
+    
+    Returns
+    -------
+    df : pandas.DataFrame
+        Dataframe containing all data from the h5 file.
+
+    """
+
+    if type(keys) == str:
+
+        df = pd.read_hdf(path, keys)
+
+        return df
+    
+    if keys is None:
+
+        keys = get_group_h5_keys(path)
+
+    dfs = []
+    for k in sorted(keys):
+
+        _df = pd.read_hdf(path, k) 
+        dfs.append(_df)
+
+    df = pd.concat(dfs)
+
+    return df
+
+def find_hdf_overflow_columns(df):
+
+    bad_cols = []
+
+    for col in df.columns:
+        s = df[col]
+
+        if pd.api.types.is_integer_dtype(s):
+            if (s.min() < np.iinfo(np.int64).min) or (s.max() > np.iinfo(np.int64).max):
+                bad_cols.append(col)
+
+        elif pd.api.types.is_object_dtype(s):
+            if s.apply(lambda x: isinstance(x, int) and (x > np.iinfo(np.int64).max or x < np.iinfo(np.int64).min)).any():
+                bad_cols.append(col)
+                
+    return bad_cols
+
+
+def fix_overflow_columns(df):
+
+    bad_cols = find_hdf_overflow_columns(df)
+
+    if not bad_cols:
+        return df
+
+    df_fixed = df.copy()
+
+    for col in bad_cols:
+        print(f"Converting column '{col}' to string (values exceed int64 range).")
+        df_fixed[col] = np.clip(df_fixed[col], np.iinfo(np.int64).min, np.iinfo(np.int64).max).astype("int64")
+
+    return df_fixed
+
+def normalize_for_hdf(df):
+
+    INT64_MIN, INT64_MAX = np.iinfo(np.int64).min, np.iinfo(np.int64).max
+
+    df_fixed = df.copy()
+
+    # --- Handle index ---
+    try:
+        if df_fixed.index.dtype == object or pd.api.types.is_integer_dtype(df_fixed.index):
+            if getattr(df_fixed.index, "min", lambda: 0)() < INT64_MIN or getattr(df_fixed.index, "max", lambda: 0)() > INT64_MAX:
+                print("Converting index to string (too large for int64).")
+                df_fixed.index = df_fixed.index.astype(str)
+    except Exception:
+        df_fixed.index = df_fixed.index.astype(str)
+
+    # --- Handle columns ---
+    for col in df_fixed.columns:
+        s = df_fixed[col]
+        if pd.api.types.is_integer_dtype(s):
+            if (s.min() < INT64_MIN) or (s.max() > INT64_MAX):
+                print(f"Column '{col}' too large — converting to string.")
+                df_fixed[col] = s.astype(str)
+        elif pd.api.types.is_object_dtype(s):
+            # Convert nested or large objects
+            def clean(x):
+                if isinstance(x, int) and not (INT64_MIN <= x <= INT64_MAX):
+                    return str(x)
+                if isinstance(x, (dict, list, tuple)):
+                    return json.dumps(x)
+                try:
+                    str(x)
+                    return x
+                except Exception:
+                    return repr(x)
+            df_fixed[col] = s.map(clean).astype(str)
+    return df_fixed
