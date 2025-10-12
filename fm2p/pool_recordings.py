@@ -46,102 +46,102 @@ def pool_recordings():
 
     rec_list = [
         {
-            'dir': r'K:\Mini2P\250616_DMM_DMM042_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250616_DMM_DMM042_ltdk\fm2',
             'AP': 0,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250618_DMM_DMM042_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250618_DMM_DMM042_ltdk\fm2',
             'AP': -4,
             'ML': 4
         },
         {
-            'dir': r'K:\Mini2P\250619_DMM_DMM042_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250619_DMM_DMM042_ltdk\fm3',
             'AP': -4,
             'ML': 4
         },
         {
-            'dir': r'K:\Mini2P\250626_DMM_DMM037_ltdk\fm1',
+            'dir': r'Y:\Mini2P_data\250626_DMM_DMM037_ltdk\fm1',
             'AP': 0,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250626_DMM_DMM041_ltdk\fm1',
+            'dir': r'Y:\Mini2P_data\250626_DMM_DMM041_ltdk\fm1',
             'AP': 0,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250627_DMM_DMM037_ltdk\fm3', 
+            'dir': r'Y:\Mini2P_data\250627_DMM_DMM037_ltdk\fm3', 
             'AP': -4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250627_DMM_DMM037_ltdk\fm5',
+            'dir': r'Y:\Mini2P_data\250627_DMM_DMM037_ltdk\fm5',
             'AP': -8,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250627_DMM_DMM041_ltdk\fm1',
+            'dir': r'Y:\Mini2P_data\250627_DMM_DMM041_ltdk\fm1',
             'AP': -4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250627_DMM_DMM042_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250627_DMM_DMM042_ltdk\fm2',
             'AP': -4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250627_DMM_DMM042_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250627_DMM_DMM042_ltdk\fm3',
             'AP': -8,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM037_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM037_ltdk\fm2',
             'AP': -4,
             'ML': -4
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM037_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM037_ltdk\fm3',
             'AP': 4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM041_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM041_ltdk\fm2',
             'AP': 4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM041_ltdk\fm4',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM041_ltdk\fm4',
             'AP': -4,
             'ML': -4
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM042_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM042_ltdk\fm3',
             'AP': -4,
             'ML': -4
         },
         {
-            'dir': r'K:\Mini2P\250628_DMM_DMM042_ltdk\fm4',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM042_ltdk\fm4',
             'AP': 4,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250630_DMM_DMM037_ltdk\fm1',
+            'dir': r'Y:\Mini2P_data\250630_DMM_DMM037_ltdk\fm1',
             'AP': 0,
             'ML': -4
         },
         {
-            'dir': r'K:\Mini2P\250630_DMM_DMM037_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250630_DMM_DMM037_ltdk\fm3',
             'AP': +8,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250630_DMM_DMM041_ltdk\fm1',
+            'dir': r'Y:\Mini2P_data\250630_DMM_DMM041_ltdk\fm1',
             'AP': 8,
             'ML': 0
         },
         {
-            'dir': r'K:\Mini2P\250630_DMM_DMM041_ltdk\fm3',
+            'dir': r'Y:\Mini2P_data\250630_DMM_DMM041_ltdk\fm3',
             'AP': 0,
             'ML': -4
         }
@@ -250,6 +250,8 @@ def pool_recordings():
         for c in range(n_cells):
             s_nspikes.iloc[c] = (preproc_data['norm_spikes'][c,:]).astype(object)
             s_rspikes.iloc[c] = (preproc_data['s2p_spks'][c,:]).astype(object)
+        df['norm_spikes'] = s_nspikes
+        df['raw_spikes'] = s_rspikes
 
         vars_to_add = [
             'ltdk_state_vec',
@@ -268,7 +270,10 @@ def pool_recordings():
         for var in vars_to_add:
             s = make_filler_series(len(df), n_frames)
             for c in range(n_cells):
-                s.iloc[0] = (preproc_data[var]).astype(object)
+                try:
+                    s.iloc[0] = (preproc_data[var]).astype(object)
+                except:
+                    s.iloc[0] = (np.ones(n_frames)*np.nan).astype(object)
             df[var] = s
 
         vars_to_add = [
@@ -283,18 +288,36 @@ def pool_recordings():
         for var in vars_to_add:
             s = make_filler_series(len(df), len(preproc_data[var]))
             for c in range(n_cells):
-                s.iloc[0] = (preproc_data[var]).astype(object)
+                try:
+                    s.iloc[0] = (preproc_data[var]).astype(object)
+                except:
+                    s.iloc[0] = (np.ones(len(preproc_data[var]))*np.nan).astype(object)
             df[var] = s
 
         merged_df = pd.concat([merged_df, df], axis=0)
 
     merged_index = merged_df.reset_index()
 
-    fm2p.write_group_h5(
-        merged_index,
-        r'K:\Mini2P\merged_V1PPC_dataset_w251010b.h5',
-        repair_overflow=True
-    )
+    # fm2p.write_group_h5(
+    #     merged_index,
+    #     r'Z:\Dylan\merged_V1PPC_dataset_w251011_v2.h5',
+    #     repair_overflow=True
+    # )
+    # merged_index.to_pickle(
+    #     r'Z:\Dylan\merged_V1PPC_dataset_w251011_v3.pickle'
+    # )
+    savedir = r'Z:\Dylan\merged_dataset_251011_v3'
+    chunk_size = 250 # 200 cells per file
+    for i, start in enumerate(range(0, len(merged_index), chunk_size)):
+        end = min(start+chunk_size, len(merged_index.index.values))  # make sure we don’t go past the end
+        chunk = merged_index.iloc[start:end]
+        chunk.to_pickle(os.path.join(savedir, 'merged_dataset_251011_v3_chunk_{:04d}.pkl'.format(i)))
+
+    # reading it back in will look like:
+    # chunks = []
+    # for i in range(number_of_chunks):  # or dynamically check for existing files
+    #     chunks.append(pd.read_pickle(f"chunk_{i}.pkl"))
+    # df_full = pd.concat(chunks, ignore_index=True)
 
     # merged_index = pd.read_hdf(r'K:\Mini2P\merged_V1PPC_dataset_251010.h5')
 

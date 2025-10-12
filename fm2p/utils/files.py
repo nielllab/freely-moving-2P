@@ -237,7 +237,7 @@ def write_group_h5(df, savepath, repair_overflow=False):
 
     for i, sname in enumerate(split_list):
 
-        print('Writing block {} of {} ({})'.format(i, len(split_list), sname))
+        print('Writing block {} of {} (key={})'.format(i+1, len(split_list), sname))
         
         df[df[split_key]==sname].to_hdf(savepath, sname, mode='a')
 
