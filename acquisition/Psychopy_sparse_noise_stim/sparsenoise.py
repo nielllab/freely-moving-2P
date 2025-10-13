@@ -17,8 +17,7 @@ import serial
 
 
 def non_overlapping_pos(existing_dots, new_diameter, max_attempts=1000):
-    """
-    Generate a random (x, y) position that doesn't overlap with existing dots.
+    """ Generate a random (x, y) position that doesn't overlap with existing dots.
     """
     new_radius = new_diameter / 2
     for _ in range(max_attempts):
@@ -38,17 +37,105 @@ def non_overlapping_pos(existing_dots, new_diameter, max_attempts=1000):
 
     return pos_x, pos_y
 
+def check_illegal_transitions(prev_dots, curr_dots, tol=1e-6):
+    """
+    Check if any dots transition directly from black→white or white→black
+    between frames (illegal transitions).
+
+    prev_dots and curr_dots are lists of dicts like:
+        {'pos': (x, y), 'diameter': d, 'color': ±1}
+    """
+    illegal = False
+
+    # Compare all dots that occupy roughly the same position
+    for prev_dot in prev_dots:
+        px, py = prev_dot['pos']
+        pr = prev_dot['diameter'] / 2
+        pcol = prev_dot['color']
+
+        for curr_dot in curr_dots:
+            cx, cy = curr_dot['pos']
+            cr = curr_dot['diameter'] / 2
+            ccol = curr_dot['color']
+
+            # If they overlap, check if color flips illegally
+            dist = np.hypot(px - cx, py - cy)
+            if dist < (pr + cr):  # overlapping dots (same region)
+                if np.abs(pcol - ccol) > (2 - tol):  # black↔white flip
+                    illegal = True
+                    break
+        if illegal:
+            break
+
+    return illegal
+
+
+def generate_frame(max_dots, diameter_range):
+    """
+    Generate one sparse noise frame: a list of dot dictionaries.
+    """
+    n_dots = np.random.randint(1, max_dots + 1)
+    frame_dots = []
+
+    for _ in range(n_dots):
+        diameter = np.random.uniform(*diameter_range)
+        color = np.random.choice([1, -1])
+        pos_x, pos_y = non_overlapping_pos(frame_dots, diameter)
+        frame_dots.append({
+            'diameter': diameter,
+            'color': color,
+            'pos': (pos_x, pos_y)
+        })
+    return frame_dots
+
+
+def legal_sparse_frames(num_frames, max_dots, diameter_range,
+                        monitor_x, monitor_y, shuffle=False,
+                        max_attempts=1000):
+    """
+    Generate a list of sparse noise stimulus instructions,
+    ensuring that no frame transitions directly from black↔white.
+
+    Returns
+    -------
+    stim_instructions : list of list of dicts
+    """
+
+    stim_instructions = []
+
+    # First frame: anything goes (starts from grey)
+    prev_frame = generate_frame(max_dots, diameter_range)
+    stim_instructions.append(prev_frame)
+
+    # Generate subsequent frames, ensuring legal transitions
+    for _ in range(1, num_frames):
+        for attempt in range(max_attempts):
+            curr_frame = generate_frame(max_dots, diameter_range)
+            if not check_illegal_transitions(prev_frame, curr_frame):
+                stim_instructions.append(curr_frame)
+                prev_frame = curr_frame
+                break
+        else:
+            raise RuntimeError(f"Failed to generate legal frame after {max_attempts} attempts.")
+
+    if shuffle:
+        np.random.shuffle(stim_instructions)
+
+    return stim_instructions
+
 
 # Parameters
-num_frames = 5000 # 5000 frames == ~41 minutes
-max_dots = 8
-diameter_range = (10, 400) # bwtween 1 and 40 visual degrees
-on_time = 0.333 # 3 Hz
+num_frames = 4000 # 5000 frames == ~41 minutes
+max_dots = 6
+diameter_range = (15, 350) # bwtween 1 and 40 visual degrees
+on_time = 0.500 # 3 Hz
 num_repeats = 1
 shuffle = True
-save_frames = True
-output_file = 'D:/sparse_noise_sequence_v4.npy'
+save_frames = False
+output_file = 'D:/sparse_noise_sequence_v6.npy'
 use_trigger = False
+monitor_x = 1920
+monitor_y = 1080
 
 if use_trigger:
     # Arduino serial settings
@@ -58,7 +145,7 @@ if use_trigger:
 
 # Setup window
 win = visual.Window(
-    size=[1920, 1080],
+    size=[monitor_x, monitor_y],
     color=[0, 0, 0],
     units='pix',
     fullscr=True,
@@ -71,23 +158,14 @@ monitor_x, monitor_y = win.size[0] // 2, win.size[1] // 2
 np.random.seed(42)
 
 # Generate stimulus instructions
-stim_instructions = []
-for _ in range(num_frames):
-    n_dots = np.random.randint(1, max_dots + 1)
-    frame_dots = []
-    for _ in range(n_dots):
-        diameter = np.random.uniform(*diameter_range)
-        color = np.random.choice([1, -1])
-        pos_x, pos_y = non_overlapping_pos(frame_dots, diameter)
-        frame_dots.append({
-            'diameter': diameter,
-            'color': color,
-            'pos': (pos_x, pos_y)
-        })
-    stim_instructions.append(frame_dots)
-
-if shuffle:
-    np.random.shuffle(stim_instructions)
+stim_instructions = legal_sparse_frames(
+    num_frames = num_frames,
+    max_dots = max_dots,
+    diameter_range = diameter_range,
+    monitor_x = monitor_x,
+    monitor_y = monitor_y,
+    shuffle = shuffle
+)
 
 if use_trigger:
     # Open serial to Arduino
