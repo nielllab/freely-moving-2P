@@ -103,6 +103,8 @@ def correct_stim_timing(stimarr, data):
     stim_s = gaussian_filter1d(np.nan_to_num(stim_s), sigma=1)
 
     # 2) population response
+    sps = data['norm_spikes']
+
     pop = np.nansum(sps[:,:cropind], axis=0)
     pop_s = (pop - np.mean(pop)) / (np.std(pop) + 1e-12)
     pop_s = gaussian_filter1d(pop_s, sigma=1)
@@ -113,7 +115,7 @@ def correct_stim_timing(stimarr, data):
     t0 = twopT[0]
     seg_centers = []
     lags_seconds = []
-    maxlag_s = 6.0  # search +/- 3s
+    maxlag_s = 120.0  # search +/- 3s
     maxlag_frames = int(np.ceil(maxlag_s / dt))
 
     i = 0
@@ -173,8 +175,7 @@ def correct_stim_timing(stimarr, data):
     best_corr_lag = lags_full[np.argmax(cc_corr)] * dt
     print("Best lag after correction (s):", best_corr_lag)
 
-
-    degree = 5  # start with quadratic; try 3 if curvature still remains
+    degree = 5
 
     poly = Polynomial.fit(seg_centers, lags_seconds, deg=degree)
     lag_fit = poly(seg_centers)
