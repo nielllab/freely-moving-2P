@@ -210,7 +210,7 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
         stim_path = 'T:/dylan/sparse_noise_sequence_v7.npy'
     else:
         stim_path = cfg['sparse_noise_stim_path']
-    stimarr = np.load(stim_path)
+    stimarr = np.load(stim_path)[:,:,:,0] # drop color channel
     n_stim_frames = np.size(stimarr, 0)
 
     # Build a signed stimulus: +1 for white, -1 for black, 0 for background/gray.
@@ -224,7 +224,7 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
     bg_est = np.median(stim_f)
     white_mask = (stim_f > bg_est)
     black_mask = (stim_f < bg_est)
-    signed_stim = (white_mask.astype(float) - black_mask.astype(float))
+    signed_stim = (white_mask.astype(np.int16) - black_mask.astype(np.int16))
 
     # stim will end after twop has already ended
     if ISI:
@@ -236,12 +236,12 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
         stimT = data['stimT']
 
     if use_lags:
-        lags = [-4,-3,-2,-1,0,1,2,3,4]
+        lags = np.arange(0,-10,-1)
 
-    norm_spikes = data['s2p_spks'].copy()
+    norm_spikes = data['s2p_spks'].copy() # [:15,:] do just a subset of cells
 
     if not use_lags:
-        norm_spikes = np.roll(norm_spikes, shift=-2, axis=1)
+        norm_spikes = np.roll(norm_spikes, shift=2, axis=1)
 
     summed_stim_spikes = np.zeros([
         np.size(norm_spikes, 0),
@@ -343,19 +343,16 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
 
     elif use_lags:
         for c in tqdm(range(np.size(norm_spikes, 0))):
-            for l_i, lag in tqdm(enumerate(lags)):
+            for l_i, lag in enumerate(lags):
 
                 sp = summed_stim_spikes[c,:].copy()[:, np.newaxis]
                 sp[np.isnan(sp)] = 0
-
-                # roll the stimulus in time for the given lag (positive lag means earlier stimuli)
-                flat_signed_lag = np.roll(flat_signed, shift=lag, axis=0)
 
                 total_sp = np.sum(sp)
                 if total_sp == 0:
                     signed_sta = np.zeros((stimY*stimX, 1), dtype=float)
                 else:
-                    signed_sta = (flat_signed_lag.T @ sp) / (total_sp + 1e-12)
+                    signed_sta = (np.roll(flat_signed, shift=lag, axis=0).T @ sp) / (total_sp + 1e-12)
 
                 signed_sta_2d = np.reshape(signed_sta, [stimY, stimX])
 
@@ -368,8 +365,8 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
                 # rgb_maps[c,l_i,:,:,:] = calc_combined_on_off_map(light_sta, dark_sta)
 
     dict_out = {
-        'STAs': sta,
-        'stimT': stimT #,
+        'STAs': sta #,
+        # 'stimT': stimT # ,
         # 'rgb_maps': rgb_maps
     }
 
@@ -378,8 +375,8 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
 
 if __name__ == '__main__':
 
-    cfg_path = r'K:\Mini2P\251015_DMM_DMM056_sparsenoise\config.yaml'
-    data_path = r'K:\Mini2P\251015_DMM_DMM056_sparsenoise\sn1\sn1_preproc.h5'
+    cfg_path = r'T:\dylan\251015_DMM_DMM056_sparsenoise\config.yaml'
+    data_path = r'T:\dylan\251015_DMM_DMM056_sparsenoise\sn1\sn1_preproc.h5'
 
     # cfg_path = fm2p.select_file(
     #     'Select config.yaml file.',
@@ -398,7 +395,7 @@ if __name__ == '__main__':
         use_lags=True
     )
 
-    savepath = os.path.join(os.path.split(data_path)[0], 'sparse_noise_receptive_fields.h5')
+    savepath = os.path.join(os.path.split(data_path)[0], 'sparse_noise_receptive_fields_FULL.h5')
     fm2p.write_h5(savepath, dict_out)
 
     # fm2p.write_h5(r'T:\dylan\251008_DMM_DMM061_sparsenoise\sn1\sparse_noise_outputs_timecorrection_v6.h5')
