@@ -68,6 +68,7 @@ Author: DMM, last updated May 2025
 import os
 import argparse
 import numpy as np
+import pandas as pd
 
 import fm2p
 
@@ -169,6 +170,9 @@ def preprocess(cfg_path=None, spath=None):
         print('  -> Analyzing {}.'.format(rpath))
         print('  -> Finding files.')
 
+        # twop tif
+        twop_tiff_path = fm2p.find('file_0*.tif', rpath, MR=True)
+
         # Topdown camera files
         possible_topdown_videos = fm2p.find('*.mp4', rpath, MR=False, retempty=True)
 
@@ -176,6 +180,10 @@ def preprocess(cfg_path=None, spath=None):
         if possible_topdown_videos is None:
             print('  -> Treating recording {} as hea-fixed sparse noise (no topdown found).'.format(rname))
             sn = True
+
+        if sn:
+            # stimulus timestamps
+            sn_stimT_path = fm2p.find('*sparsenoise.csv', rpath, MR=True)
 
         if not sn:
             topdown_video = fm2p.filter_file_search(possible_topdown_videos, toss=['labeled','resnet50'], MR=True)
@@ -203,7 +211,8 @@ def preprocess(cfg_path=None, spath=None):
         iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
         stat_path = fm2p.find('stat.npy', rpath, MR=True)
         ops_path = fm2p.find('ops.npy', rpath, MR=True)
-        bin_path = fm2p.find('data.bin', rpath, MR=True)
+        if axons:
+            bin_path = fm2p.find('data.bin', rpath, MR=True)
 
         # elif axons:
         #     F_axons_path = fm2p.find('*_registered_data.mat', rpath, MR=True)
@@ -278,6 +287,9 @@ def preprocess(cfg_path=None, spath=None):
         if sn:
 
             full_rname = os.path.split(rpath)[1]
+
+            # read in stimulus frames
+            sn_stimT = pd.read_csv(sn_stimT_path)['psychopy_time'].to_numpy()
 
         if not sn:
 
@@ -362,8 +374,10 @@ def preprocess(cfg_path=None, spath=None):
             ops=ops
         )
 
-        twop_dt = 1./cfg['twop_rate']
-        twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
+        # twop_dt = 1./cfg['twop_rate']
+        # twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
+        twopT = fm2p.read_scanimage_time(twop_tiff_path)
+
         twop_dict['twopT'] = twopT
         twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
         twop_dict['norm_spikes'] = normspikes
@@ -475,15 +489,7 @@ def preprocess(cfg_path=None, spath=None):
                     twopT,
                     eyeStart,
                     eyeEnd
-                )
-
-        if sn:
-
-            print('  -> Measuring head-fixed receptive fields using sparse noise stimulus.')
-
-            preprocessed_dict = twop_dict
-            sn_dict = fm2p.measure_sparse_noise_receptive_fields(cfg, twop_dict)
-        
+                )        
 
         print('  -> Saving preprocessed dataset to file.')
 
@@ -524,9 +530,6 @@ def preprocess(cfg_path=None, spath=None):
 
             if cfg['imu']:
                 preprocessed_dict = {**preprocessed_dict, **imu_dict}
-            
-            if sn:
-                preprocessed_dict = {**preprocessed_dict, **sn_dict}
 
         # fm2p.run_preprocessing_diagnostics(preprocessed_dict, ltdk=ltdk)
 
@@ -542,6 +545,17 @@ def preprocess(cfg_path=None, spath=None):
         # if not sn:
         #     revcorr_dict = fm2p.calc_revcorr_ltdk(preprocessed_dict, save=False, IMU=imu)
         #     preprocessed_dict = {**preprocessed_dict, **revcorr_dict}
+
+        if sn:
+
+            preprocessed_dict = twop_dict
+
+            preprocessed_dict['stimT'] = sn_stimT
+
+            # print('  -> Measuring head-fixed receptive fields using sparse noise stimulus.')
+            # sn_dict = fm2p.measure_sparse_noise_receptive_fields(cfg, preprocessed_dict)
+
+            # preprocessed_dict = {**preprocessed_dict, **sn_dict}
 
 
         _savepath = os.path.join(rpath, '{}_preproc.h5'.format(full_rname))

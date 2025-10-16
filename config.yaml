@@ -34,8 +34,7 @@ eyecam_DLC_search_key: '*_eyecam_deinterDLC_resnet50_*freely_moving_eyecams_03*.
 topdown_DLC_search_key: '*DLC_resnet50_*freely_moving_topdown_06*.h5'
 
 # options used for sparse noise analysis
-tif_path: T:\...
-stim_timestamp_csv: T:\
+sparse_noise_stim_path: T:/sparse_noise_sequence_v7.npy
 
 # Eyecam tracking
 eye_ellipse_thresh: 0.85

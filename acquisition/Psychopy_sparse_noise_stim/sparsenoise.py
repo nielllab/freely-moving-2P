@@ -63,7 +63,7 @@ def check_illegal_transitions(prev_dots, curr_dots, tol=1e-6):
             # If they overlap, check if color flips illegally
             dist = np.hypot(px - cx, py - cy)
             if dist < (pr + cr):  # overlapping dots (same region)
-                if np.abs(pcol - ccol) > (2 - tol):  # black↔white flip
+                if np.abs(pcol - ccol) > (2 - tol):  # black/white flip
                     illegal = True
                     break
         if illegal:
@@ -193,7 +193,6 @@ frame_data = []
 
 history_clock = core.MonotonicClock()
 
-frameN = 0
 for rep in range(num_repeats):
     for i, frame_dots in enumerate(stim_instructions):
         on_clock = core.Clock()
@@ -215,11 +214,11 @@ for rep in range(num_repeats):
                     units='pix'
                 )
                 stim.draw()
+
             flip_time = win.flip()
             system_time = time.time()
 
-            frame_data.append((frameN, flip_time, system_time))
-            frameN += 1
+        frame_data.append((i, flip_time, system_time))
 
         stim_offset = history_clock.getTime()
 

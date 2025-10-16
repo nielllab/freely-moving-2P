@@ -207,7 +207,7 @@ def correct_stim_timing(stimarr, data, savepath):
 def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
 
     if 'sparse_noise_stim_path' not in cfg.keys():
-        stim_path = 'T:/dylan/sparse_noise_sequence_v5.npy'
+        stim_path = 'T:/dylan/sparse_noise_sequence_v7.npy'
     else:
         stim_path = cfg['sparse_noise_stim_path']
     stimarr = np.load(stim_path)
@@ -219,7 +219,7 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
     if stim_f.max() <= 1.0:
         stim_f = stim_f * 255.0
 
-    twopT = fm2p.read_scanimage_time(cfg['tif_path'])
+    twopT = data['twopT']
 
     bg_est = np.median(stim_f)
     white_mask = (stim_f > bg_est)
@@ -233,7 +233,7 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
     else:
         # stimT = correct_stim_timing(stimarr, data)
         # TODO: make sure this reads in as the expected format
-        stimT = pd.read_csv(cfg['stim_timestamp_csv'])['psychopy_time'].to_numpy()
+        stimT = data['stimT']
 
     if use_lags:
         lags = [-4,-3,-2,-1,0,1,2,3,4]
@@ -378,13 +378,27 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
 
 if __name__ == '__main__':
 
-    data = fm2p.read_h5(r'T:\dylan\251008_DMM_DMM061_sparsenoise\sn1\sn1_preproc.h5')
+    cfg_path = r'K:\Mini2P\251015_DMM_DMM056_sparsenoise\config.yaml'
+    data_path = r'K:\Mini2P\251015_DMM_DMM056_sparsenoise\sn1\sn1_preproc.h5'
 
-    data['norm_spikes'] = data['norm_spikes'][:3,:]
+    # cfg_path = fm2p.select_file(
+    #     'Select config.yaml file.',
+    #     filetypes=[('YAML','.yaml'),]
+    # )
+    cfg = fm2p.read_yaml(cfg_path)
+    # data_path = fm2p.select_file(
+    #     'Select preprocessed HDF file.',
+    #     filetypes=[('HDF','.h5'),]
+    # )
+    data = fm2p.read_h5(data_path)
+
     dict_out = fm2p.measure_sparse_noise_receptive_fields(
-        {},
+        cfg,
         data,
         use_lags=True
     )
 
-    fm2p.write_h5(r'T:\dylan\251008_DMM_DMM061_sparsenoise\sn1\sparse_noise_outputs_timecorrection_v6.h5')
+    savepath = os.path.join(os.path.split(data_path)[0], 'sparse_noise_receptive_fields.h5')
+    fm2p.write_h5(savepath, dict_out)
+
+    # fm2p.write_h5(r'T:\dylan\251008_DMM_DMM061_sparsenoise\sn1\sparse_noise_outputs_timecorrection_v6.h5')
