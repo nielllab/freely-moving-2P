@@ -215,15 +215,32 @@ def pool_recordings():
                     except:
                         merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_tuning_error'.format(state, key)] = np.zeros(12) * np.nan
 
+                    try:
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_is_reliable'.format(state, key)] = revcorr_data[state][key]['is_reliable'][c].astype(float)
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_is_modulated'.format(state, key)] = revcorr_data[state][key]['is_modulated'][c].astype(float)
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_modulation'.format(state, key)] = revcorr_data[state][key]['modulation'][c].astype(float)
+                    except KeyError:
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_is_reliable'.format(state, key)] = np.nan
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_is_modulated'.format(state, key)] = np.nan
+                        merged_dict['{}_cell{:03d}'.format(base_name, c)]['{}_{}_modulation'.format(state, key)] = np.nan
+
         peth_keys = [
-            'right_PETHs',
-            'left_PETHs',
-            'up_PETHs',
-            'down_PETHs',
-            'norm_right_PETHs',
-            'norm_left_PETHs',
-            'norm_up_PETHs',
-            'norm_down_PETHs'
+            'right_PETHs_dFF',
+            'left_PETHs_dFF',
+            'up_PETHs_dFF',
+            'down_PETHs_dFF',
+            'norm_right_PETHs_dFF',
+            'norm_left_PETHs_dFF',
+            'norm_up_PETHs_dFF',
+            'norm_down_PETHs_dFF',
+            'right_PETHs_sps',
+            'left_PETHs_sps',
+            'up_PETHs_sps',
+            'down_PETHs_sps',
+            'norm_right_PETHs_sps',
+            'norm_left_PETHs_sps',
+            'norm_up_PETHs_sps',
+            'norm_down_PETHs_sps'
         ]
         for k in peth_keys:
             
@@ -266,7 +283,7 @@ def pool_recordings():
             merged_dict['{}_cell{:03d}'.format(base_name, c)]['rec_name'] = base_name
 
     fm2p.write_h5(
-        r'T:\dylan\merged_V1PPC_dataset_w251013_v1.h5',
+        r'T:\dylan\merged_V1PPC_dataset_w251020_v1.h5',
         merged_dict
     )
 
