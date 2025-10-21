@@ -13,6 +13,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+mpl.use("Agg")
 
 def plot_2D_hist(ax, celldata):
     x_vals = celldata['theta_interp']
@@ -355,7 +356,7 @@ def pooled_panels(data, celldata, cell, pdf):
         fig.tight_layout()
         pdf.savefig(fig)
         plt.close(fig)
-        
+
     except:
         pass
 
@@ -369,7 +370,7 @@ def pooled_figs():
         if celldata['rec_name'].decode("utf-8") not in unique_recordings:
             unique_recordings.append(celldata['rec_name'].decode("utf-8"))
 
-    for rec in unique_recordings[8:]:
+    for rec in unique_recordings[9:]:
 
         print('  -> Writing pdf for {}'.format(rec))
         print('  -> Will check all cells from dataset to see which are in {}'.format(rec))

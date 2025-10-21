@@ -54,5 +54,5 @@ void loop() {
     Serial.println(imu.data.gyroZ, 3);
 
     // Print 50x per second
-    delay(20);
+    // delay(1); // delay eliminated 251021 DMM
 }

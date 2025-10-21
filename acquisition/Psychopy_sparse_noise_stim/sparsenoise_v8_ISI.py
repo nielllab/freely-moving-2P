@@ -18,21 +18,6 @@ import csv
 import time
 
 
-# Parameters
-num_frames = 4000
-max_dots = 6
-diameter_range = (15, 350) # bwtween 1 and 40 visual degrees
-on_time = 0.500 # 3 Hz
-num_repeats = 1
-shuffle = True
-save_frames = False
-output_file = 'D:/sparse_noise_sequence_v9.npy'
-timestamp_file = 'D:/timestamps_251020_DMM056_sparsenoise.csv'
-use_trigger = True
-monitor_x = 1920
-monitor_y = 1080
-
-
 def non_overlapping_pos(existing_dots, new_diameter, max_attempts=1000):
     """ Generate a random (x, y) position that doesn't overlap with existing dots.
     """
@@ -53,7 +38,6 @@ def non_overlapping_pos(existing_dots, new_diameter, max_attempts=1000):
             return pos_x, pos_y
 
     return pos_x, pos_y
-
 
 def check_illegal_transitions(prev_dots, curr_dots, tol=1e-6):
     """
@@ -141,6 +125,22 @@ def legal_sparse_frames(num_frames, max_dots, diameter_range,
 
     return stim_instructions
 
+
+# Parameters
+num_frames = 500 # 5000 frames == ~41 minutes
+max_dots = 6
+diameter_range = (15, 350) # bwtween 1 and 40 visual degrees
+on_time = 0.500 # 3 Hz
+off_time = 0.500
+num_repeats = 1
+shuffle = True
+save_frames = True
+output_file = 'D:/sparse_noise_sequence_v8b_ISI.npy'
+timestamp_file = 'D:/timestamps_251020_DMM056_sparsenoise3_ISI.csv'
+use_trigger = True
+monitor_x = 1920
+monitor_y = 1080
+
 if use_trigger:
     # Arduino serial settings
     arduino_port = 'COM3'
@@ -170,32 +170,6 @@ stim_instructions = legal_sparse_frames(
     shuffle = shuffle
 )
 
-# switch to pre-rendered frames
-pre_rendered_frames = []
-
-for i, frame_dots in enumerate(stim_instructions):
-    # Draw everything for this frame once
-    for dot in frame_dots:
-        stim = visual.Circle(
-            win,
-            radius=dot['diameter'] / 2,
-            pos=dot['pos'],
-            fillColor=[dot['color']] * 3,
-            lineColor=[dot['color']] * 3,
-            units='pix'
-        )
-        stim.draw()
-
-    # Capture the current drawn buffer as an image
-    img_stim = visual.BufferImageStim(win, buffer='back')
-    pre_rendered_frames.append(img_stim)
-
-    # Clear window for next pre-render
-    win.flip(clearBuffer=True)
-
-print(f"Pre-rendered {len(pre_rendered_frames)} frames.")
-
-
 if use_trigger:
     # Open serial to Arduino
     ser = serial.Serial(arduino_port, baud_rate, timeout=1)
@@ -221,36 +195,31 @@ frame_data = []
 history_clock = core.MonotonicClock()
 
 for rep in range(num_repeats):
-    for i, img_stim in enumerate(pre_rendered_frames):
-        # Draw pre-rendered frame
-        img_stim.draw()
-
-        # Flip buffer — this returns the **actual onset time**
-        onset_time = win.flip()
+    for i, frame_dots in enumerate(stim_instructions):
+        on_clock = core.Clock()
         stim_onset = history_clock.getTime()
 
-        # Compute the target offset time (desired duration)
-        desired_offset_time = onset_time + on_time
-
-        # Wait for the frame duration, allowing escape check
-        while history_clock.getTime() < stim_onset + on_time:
+        while on_clock.getTime() < on_time:
             if event.getKeys(['escape']):
                 win.close()
                 core.quit()
 
-            # Avoid busy waiting
-            core.wait(0.001)
+            # Draw all dots
+            for dot in frame_dots:
+                stim = visual.Circle(
+                    win,
+                    radius=dot['diameter'] / 2,
+                    pos=dot['pos'],
+                    fillColor=[dot['color']]*3,
+                    lineColor=[dot['color']]*3,
+                    units='pix'
+                )
+                stim.draw()
 
-        # Prepare for next frame (draw next or blank)
-        if i < len(pre_rendered_frames) - 1:
-            next_stim = pre_rendered_frames[i + 1]
-            next_stim.draw()
-        else:
-            win.color = [0, 0, 0]
-            win.flip(clearBuffer=True)
-
-        # The **offset** is the next flip (when current frame is replaced)
-        offset_time = win.flip()
+            flip_time = win.flip()
+            system_time = time.time()
+            
+        stim_offset = history_clock.getTime()
 
         # Record frame if enabled
         if save_frames:
@@ -258,20 +227,25 @@ for rep in range(num_repeats):
             frame_np = np.asarray(frame)
             recorded_frames.append(frame_np)
 
-        frame_data.append({
-            'rep': rep,
-            'frame_index': i,
-            'onset_time': onset_time,
-            'offset_time': offset_time,
-            'stim_onset_clock': stim_onset,
-            'duration_actual': offset_time - onset_time,
-        })
+        isi_onset = history_clock.getTime()
+        
+        # ISI removed
+        # Inter-frame gray screen
+        if off_time > 0:
+            if event.getKeys(['escape']):
+                win.close()
+                core.quit()
+            win.flip()
+            core.wait(off_time)
+
+        frame_data.append((i, flip_time, system_time, isi_onset))
 
         print(f'Frame {i}: {len(frame_dots)} dots, '
-              f'onset={onset_time:.3f}, offset={offset_time:.3f}')
+              f'onset={stim_onset:.3f}, offset={stim_offset:.3f}')
 
 with open(timestamp_file, "w", newline="") as csvfile:
     writer = csv.writer(csvfile)
+    writer.writerow(["frame_number", "psychopy_time", "system_time", "ISI_time"])
     writer.writerows(frame_data)
 
 if save_frames and recorded_frames:
@@ -282,3 +256,17 @@ if save_frames and recorded_frames:
 win.close()
 ser.close()
 core.quit()
+
+# cross correlation between stimulus and population spiking activity
+
+# stim_flat = stimarr.reshape(np.size(stimarr,0), -1)
+# stim_drive = stim_flat.mean(axis=1)
+# stim_drive_interp = fm2p.interpT(stim_drive, stimT, twopT)
+
+# pop_resp = np.nansum(data['s2p_spks'], axis=0)
+# # z-score
+# pop_resp = (pop_resp - np.mean(pop_resp)) / np.std(pop_resp)
+
+# cc, lags = fm2p.nanxcorr(stim_drive_interp, pop_resp, maxlag=40)
+# best_lag = lags[np.argmax(cc)]
+
