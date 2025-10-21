@@ -200,9 +200,6 @@ def calc_PETHs(data):
     leftward_onsets = find_trajectory_initiation(dTheta, eyeT[:-1], leftward_onsets)
     leftward_onsets = get_event_offsets(leftward_onsets, min_frames=4)
     left_theta_movement_inds = np.array([fm2p.find_closest_timestamp(twopT, t)[0] for t in leftward_onsets if not np.isnan(t)])
-    # movL = np.zeros(len(theta_interp))
-    # movL[left_theta_movement_inds] = 1
-    # movL = np.concatenate([(np.diff(movL)>0), np.array([0])])
 
     downward_onsets = get_event_onsets(eyeT[np.where(dPhi < -300)[0]], min_frames=4)
     downward_onsets = find_trajectory_initiation(dPhi, eyeT[:-1], downward_onsets)
@@ -217,46 +214,29 @@ def calc_PETHs(data):
     win_frames = np.arange(-15,16)
     win_times = win_frames*(1/7.49)
 
-    _, right_PETHs = calc_hist_PETH(data['norm_spikes'], rightward_onsets, win_frames)
+    _, right_PETHs_sps = calc_hist_PETH(data['norm_spikes'], rightward_onsets, win_frames)
+    _, left_PETHs_sps = calc_hist_PETH(data['norm_spikes'], leftward_onsets, win_frames)
+    _, up_PETHs_sps = calc_hist_PETH(data['norm_spikes'], upward_onsets, win_frames)
+    _, down_PETHs_sps = calc_hist_PETH(data['norm_spikes'], downward_onsets, win_frames)
 
-    _, left_PETHs = calc_hist_PETH(data['norm_spikes'], leftward_onsets, win_frames)
+    _, right_PETHs_dFF = calc_hist_PETH(data['raw_dFF'], rightward_onsets, win_frames)
+    _, left_PETHs_dFF = calc_hist_PETH(data['raw_dFF'], leftward_onsets, win_frames)
+    _, up_PETHs_dFF = calc_hist_PETH(data['raw_dFF'], upward_onsets, win_frames)
+    _, down_PETHs_dFF = calc_hist_PETH(data['raw_dFF'], downward_onsets, win_frames)
 
-    _, up_PETHs = calc_hist_PETH(data['norm_spikes'], upward_onsets, win_frames)
+    normR_sps = norm_psth(right_PETHs_sps)
+    normL_sps = norm_psth(left_PETHs_sps)
+    normU_sps = norm_psth(up_PETHs_sps)
+    normD_sps = norm_psth(down_PETHs_sps)
 
-    _, down_PETHs = calc_hist_PETH(data['norm_spikes'], downward_onsets, win_frames)
-
-    normR = norm_psth(right_PETHs)
-    normL = norm_psth(left_PETHs)
-    normU = norm_psth(up_PETHs)
-    normD = norm_psth(down_PETHs)
-
-    # fig, axs = plt.subplots(10,10,dpi=300,figsize=(10,10), sharex=True, sharey=True)
-    # axs = axs.flatten()
-    # for c in range(100):
-    #     if c == 9:
-    #         continue
-    #     axs[c].plot(win_times, normR[c], 'tab:red')
-    #     axs[c].plot(win_times, normL[c], 'tab:blue')
-    #     axs[c].hlines(0, win_times[0], win_times[-1], ls='--', color='k', alpha=0.3)
-    #     axs[c].hlines(0, -0.1, 0.1, ls='--', color='k', alpha=0.3)
-    # fig.suptitle('rightwards saccadic PETH (spikes)')
-    # fig.tight_layout()
-    # fig.savefig('saccadic_PETH_spikes_right.png')
-
-    # fig, axs = plt.subplots(10,10,dpi=300,figsize=(10,10), sharex=True, sharey=True)
-    # axs = axs.flatten()
-    # for c in range(100):
-    #     if c == 9:
-    #         continue
-    #     axs[c].plot(win_times, normR[c], 'tab:red')
-    #     axs[c].plot(win_times, normL[c], 'tab:blue')
-    #     axs[c].hlines(0, win_times[0], win_times[-1], ls='--', color='k', alpha=0.3)
-    #     axs[c].hlines(0, -0.1, 0.1, ls='--', color='k', alpha=0.3)
-    # fig.suptitle('leftward saccadic PETH')
-    # fig.tight_layout()
-    # fig.savefig('saccadic_PETH_spikes_left.png')
+    normR_dFF = norm_psth(right_PETHs_dFF)
+    normL_dFF = norm_psth(left_PETHs_dFF)
+    normU_dFF = norm_psth(up_PETHs_dFF)
+    normD_dFF = norm_psth(down_PETHs_dFF)
 
     peth_dict = {
+        'win_frames': win_frames,
+        'win_times': win_times,
         'leftward_onsets': leftward_onsets,
         'rightward_onsets': rightward_onsets,
         'upward_onsets': upward_onsets,
@@ -265,14 +245,22 @@ def calc_PETHs(data):
         'left_theta_movement_inds': left_theta_movement_inds,
         'down_phi_movement_inds': down_phi_movement_inds,
         'up_phi_movement_inds': up_phi_movement_inds,
-        'right_PETHs': right_PETHs,
-        'left_PETHs': left_PETHs,
-        'up_PETHs': up_PETHs,
-        'down_PETHs': down_PETHs,
-        'norm_right_PETHs': normR,
-        'norm_left_PETHs': normL,
-        'norm_up_PETHs': normU,
-        'norm_down_PETHs': normD
+        'right_PETHs_dFF': right_PETHs_dFF,
+        'left_PETHs_dFF': left_PETHs_dFF,
+        'up_PETHs_dFF': up_PETHs_dFF,
+        'down_PETHs_dFF': down_PETHs_dFF,
+        'norm_right_PETHs_dFF': normR_dFF,
+        'norm_left_PETHs_dFF': normL_dFF,
+        'norm_up_PETHs_dFF': normU_dFF,
+        'norm_down_PETHs_dFF': normD_dFF,
+        'right_PETHs_sps': right_PETHs_sps,
+        'left_PETHs_sps': left_PETHs_sps,
+        'up_PETHs_sps': up_PETHs_sps,
+        'down_PETHs_sps': down_PETHs_sps,
+        'norm_right_PETHs_sps': normR_sps,
+        'norm_left_PETHs_sps': normL_sps,
+        'norm_up_PETHs_sps': normU_sps,
+        'norm_down_PETHs_sps': normD_sps
     }
 
     return peth_dict
