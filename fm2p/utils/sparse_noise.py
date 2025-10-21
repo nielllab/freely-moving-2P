@@ -236,9 +236,9 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
         stimT = data['stimT']
 
     if use_lags:
-        lags = np.arange(0,-10,-1)
+        lags = np.arange(-155-338,-1)
 
-    norm_spikes = data['s2p_spks'].copy() # [:15,:] do just a subset of cells
+    norm_spikes = data['s2p_spks'].copy()[:2,:] # do just a subset of cells
 
     if not use_lags:
         norm_spikes = np.roll(norm_spikes, shift=2, axis=1)
@@ -399,7 +399,7 @@ if __name__ == '__main__':
         use_lags=True
     )
 
-    savepath = os.path.join(os.path.split(data_path)[0], 'sparse_noise_receptive_fields_FULL.h5')
+    savepath = os.path.join(os.path.split(data_path)[0], 'sparse_noise_lags_20_to_45 secL.h5')
     fm2p.write_h5(savepath, dict_out)
 
     # fm2p.write_h5(r'T:\dylan\251008_DMM_DMM061_sparsenoise\sn1\sparse_noise_outputs_timecorrection_v6.h5')

@@ -96,7 +96,7 @@ def pool_recordings():
             'ML': 0
         },
         {
-            'dir': r'Y:\Mini2P_data\250628_DMM_DMM037_ltdk\fm2',
+            'dir': r'Y:\Mini2P_data\250628_DMM_DMM037_ltdk\fm2', # broke here, should be rec #8
             'AP': -4,
             'ML': -4
         },
