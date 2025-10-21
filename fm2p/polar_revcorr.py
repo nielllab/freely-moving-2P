@@ -31,11 +31,21 @@ def polar_histogram2d(theta, r, spikes, r_bins=13, r_max=26, theta_width=3):
     n_theta_bins = int(np.ceil((2 * np.pi) / theta_width))
     theta_edges = np.linspace(-np.pi, np.pi, n_theta_bins + 1)
 
-    H_occ, _, _ = np.histogram2d(r, theta, bins=[r_edges, theta_edges])
-    H, _, _ = np.histogram2d(r, theta, bins=[r_edges, theta_edges], weights=spikes)
-    H_norm = H / H_occ
+    # H_occ, _, _ = np.histogram2d(
+    #     r,
+    #     theta,
+    #     bins=[r_edges, theta_edges]
+    # )
+    H, _, _ = np.histogram2d(
+        r,
+        theta,
+        bins=[r_edges, theta_edges],
+        weights=spikes
+    )
+    # H_norm = H / H_occ
+    # H_norm[np.isnan(H_norm)] = 0.
 
-    return H_norm, r_edges, theta_edges
+    return H, r_edges, theta_edges
 
 
 def smooth_2d_rate_maps(rate_maps):
@@ -55,12 +65,12 @@ def smooth_2d_rate_maps(rate_maps):
     return smoothed_rate_maps
 
 
-def make_nan_mask(items):
+def valid_mask(items):
 
     mask = np.ones_like(items[0]).astype(bool)
 
     for x in items:
-        mask = mask * (~np.isnan(x)).astype(bool)
+        mask &= ~np.isnan(x)
 
     return mask.astype(bool)
 
@@ -70,7 +80,7 @@ def polar_revcorr(preproc_path=None):
     if preproc_path is None:
         preproc_path = fm2p.select_file(
             'Select preprocessing HDF file.',
-            filetypes=[('HDF','.h5'),]    
+            filetypes=[('HDF','.h5'),]
         )
         data = fm2p.read_h5(preproc_path)
     elif type(preproc_path) == str:
@@ -97,8 +107,9 @@ def polar_revcorr(preproc_path=None):
     egocentric = data['egocentric'].copy()
     distance = data['dist_to_pillar'].copy()
 
-    pupil_mask = make_nan_mask([theta, phi])
-    retego_mask = make_nan_mask([retinocentric, egocentric, distance])
+    pupil_mask = valid_mask([theta, phi])
+    ret_mask = valid_mask([retinocentric, distance])
+    ego_mask = valid_mask([egocentric, distance])
 
     x_bins = np.linspace(np.nanpercentile(theta, 10), np.nanpercentile(theta, 90), num=n_x+1)
     y_bins = np.linspace(np.nanpercentile(phi, 10), np.nanpercentile(phi, 90), num=n_y+1)
@@ -137,28 +148,28 @@ def polar_revcorr(preproc_path=None):
     print('  -> Measuring polar histograms for retinocentric and egocentric orientations.')
     for c in tqdm(range(n_cells)):
         H_ret[c,:,:], _, _ = polar_histogram2d(
-            retinocentric[retego_mask],
-            distance[retego_mask],
-            spikes[c,retego_mask]
+            retinocentric[ret_mask],
+            distance[ret_mask],
+            spikes[c, ret_mask]
         )
         H_ego[c,:,:], r_edges, theta_edges = polar_histogram2d(
-            egocentric[retego_mask],
-            distance[retego_mask],
-            spikes[c,retego_mask]
+            egocentric[ego_mask],
+            distance[ego_mask],
+            spikes[c, ego_mask]
         )
     
     h_ret_smoothed = smooth_2d_rate_maps(H_ret)
     h_ego_smoothed = smooth_2d_rate_maps(H_ego)
 
     ret_occ, _, _ = polar_histogram2d(
-        retinocentric[retego_mask],
-        distance[retego_mask],
-        np.ones_like(retinocentric[retego_mask])
+        retinocentric[ret_mask],
+        distance[ret_mask],
+        np.ones_like(retinocentric[ret_mask])
     )
     ego_occ, _, _ = polar_histogram2d(
-        retinocentric[retego_mask],
-        distance[retego_mask],
-        np.ones_like(retinocentric[retego_mask])
+        egocentric[ego_mask],
+        distance[ego_mask],
+        np.ones_like(egocentric[ego_mask])
     )
 
     # Plot
