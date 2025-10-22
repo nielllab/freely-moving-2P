@@ -123,13 +123,13 @@ def correct_stim_timing(stimarr, data, savepath):
         sd = stim_s[mask] - np.nanmean(stim_s[mask])
         rd = pop_s[mask] - np.nanmean(pop_s[mask])
         cc = correlate(sd, rd, mode='full')
-        lags = np.arange(-len(sd)+1, len(sd))
+        lags_ = np.arange(-len(sd)+1, len(sd))
 
         center = len(cc)//2
         low = max(0, center - maxlag_frames)
         high = min(len(cc), center + maxlag_frames + 1)
         sub = cc[low:high]
-        sublags = lags[low:high]
+        sublags = lags_[low:high]
         
         best_idx = np.argmax(sub)
         best_lag_frames = sublags[best_idx]
@@ -236,7 +236,11 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
         # to the 2P timestamps, i'm turning them into relative timestamps.
         # Later they will be aligned post-hot by cross correlation of stimulus
         # drive.
-        stimT = data['stimT'] - data['stimT'][0]
+        # stimT = data['stimT'] - data['stimT'][0]
+
+        # 251021 try switching back to sytnthetic timestamps,
+        # since real ones may be misreported from psychtoolbox
+        stimT = np.arange(0, n_stim_frames, 1)
 
     if use_lags:
         # Lags are in frames. Positive lag means we look backward in time:
@@ -244,7 +248,7 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
         # (useful for measuring causal stimulus -> spike relationships).
         # Negative lag means we look forward: STA at negative lag uses stimulus frames
         # that occur after the spike (useful for diagnostics but not causal).
-        lags = np.arange(-5,10,1)
+        lags = np.arange(-5,11,1)
 
     norm_spikes = data['s2p_spks'].copy()[:10,:] # do just a subset of cells
 
@@ -285,7 +289,6 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
 
     else:
 
-        # TODO: test different lags and see what works best, prob. ~500 msec
         print('  -> Summing spikes during stimulus (no ISI)')
         for c in tqdm(range(np.size(norm_spikes,0))):
             for i,t in enumerate(stimT[:-1]): # in sec
@@ -364,19 +367,19 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
             R = np.fft.rfft(pop_s, n=nfft)
             cc_full = np.fft.irfft(S * np.conjugate(R), n=nfft)
             cc = np.concatenate((cc_full[-(L-1):], cc_full[:L]))
-            lags = np.arange(-L+1, L)
+            delay_test_lags = np.arange(-L+1, L)
 
             # restrict search to a plausible window
             search_min = int(cfg.get('sparse_noise_search_min_frames', -80))
             search_max = int(cfg.get('sparse_noise_search_max_frames', 80))
-            search_min = max(search_min, lags.min())
-            search_max = min(search_max, lags.max())
-            mask = (lags >= search_min) & (lags <= search_max)
+            search_min = max(search_min, delay_test_lags.min())
+            search_max = min(search_max, delay_test_lags.max())
+            mask = (delay_test_lags >= search_min) & (delay_test_lags <= search_max)
             if mask.sum() == 0:
                 delay_frames = 0
             else:
                 sub = cc[mask]
-                sublags = lags[mask]
+                sublags = delay_test_lags[mask]
                 best_idx = np.nanargmax(sub)
                 best_lag = int(sublags[best_idx])
                 # clamp extreme results
@@ -387,6 +390,11 @@ def measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=False):
                     delay_frames = best_lag
         except Exception:
             delay_frames = 0
+
+    # Normalize the cross-correlation
+    cc_full = np.fft.irfft(S * np.conjugate(R), n=nfft)
+    cc_full = cc_full / (L * np.std(stim_s) * np.std(pop_s))
+    cc = np.concatenate((cc_full[-(L-1):], cc_full[:L]))
 
     print('Using {} as frame delay.'.format(delay_frames))
 
