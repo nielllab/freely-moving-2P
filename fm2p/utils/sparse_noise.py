@@ -1,134 +1,129 @@
 
-import os
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
-from matplotlib.colors import Normalize
-import numpy as np
+from scipy.interpolate import interp1d
 from scipy.signal import correlate
 
 import fm2p
-
-
-def calc_combined_on_off_map(rf_on, rf_off, clim=None):
-    if clim is None:
-        clim = max(np.max(np.abs(rf_on)), np.max(np.abs(rf_off)))
-    norm = Normalize(vmin=0, vmax=clim, clip=True)
-    # scale to [0,1]
-    on_scaled = norm(np.maximum(rf_on, 0))
-    off_scaled = norm(np.maximum(rf_off, 0))
-    rgb = np.zeros(rf_on.shape + (3,), dtype=float)
-    rgb[...,0] = on_scaled
-    rgb[...,2] = off_scaled
-
-    return rgb
+import imgtools
 
 
 def find_delay_frames(stim_s, pop_s, max_lag=80):
+
+    stim_s = np.asarray(stim_s).ravel()
+    pop_s  = np.asarray(pop_s).ravel()
+
     stim_s = (stim_s - np.mean(stim_s)) / np.std(stim_s)
     pop_s = (pop_s - np.mean(pop_s)) / np.std(pop_s)
-    corr = correlate(pop_s, stim_s, mode='full')
+
+    corr = correlate(stim_s, pop_s, mode='full')
     lags = np.arange(-len(stim_s)+1, len(pop_s))
-    # restrict search window
     mask = (lags >= -max_lag) & (lags <= max_lag)
     lag = lags[mask][np.argmax(corr[mask])]
+
     return lag
 
 
-def compute_spatial_sta(stimulus, spikes, stim_times, spike_times,
-                    window=10, delay=None, separate_light_dark=True,
-                    auto_delay=True, max_lag_frames=80):
-    """
-    Compute spike-triggered averages (STAs) for multiple cells from calcium imaging data.
-    """
-
+def compute_calcium_sta_spatial(
+    stimulus,
+    spikes,
+    stim_times,
+    spike_times,
+    window=20,
+    separate_light_dark=True,
+    auto_delay=True,
+    max_lag_frames=80,
+):
+    
     stimulus = np.asarray(stimulus)
     spikes = np.asarray(spikes)
     stim_times = np.asarray(stim_times)
     spike_times = np.asarray(spike_times)
+    
+    # trim off extra frames at end of 2P data
+    stimend = np.size(stimulus,0)/2
+    spikeend, _ = fm2p.find_closest_timestamp(spike_times, stimend)
+    spikes = spikes[:,:spikeend]
+    spike_times = spike_times[:spikeend]
 
-    stimulus = np.reshape(stimulus,
-        [np.size(stimulus,0), np.size(stimulus,1)*np.size(stimulus,2)]
-    )
+    nFrames, stimY, stimX = np.shape(stimulus)
 
-    n_stim, n_features = stimulus.shape
+    stim_mean_trace = np.mean(stimulus, axis=(1,2))
+
+    bg_est = np.median(stimulus)
+    white_mask = (stimulus > bg_est)
+    black_mask = (stimulus < bg_est)
+    signed_stim = (white_mask.astype(np.int16) - black_mask.astype(np.int16))
+
+    flat_signed = np.reshape(signed_stim, [nFrames, stimY*stimX])
+    flat_signed = flat_signed - np.mean(flat_signed, axis=0, keepdims=True)
+
+    n_stim, n_features = flat_signed.shape
     n_cells, n_spike_samples = spikes.shape
 
-    # chek time alignment
     if n_spike_samples != len(spike_times):
         raise ValueError(f"spikes.shape[1] ({n_spike_samples}) != len(spike_times) ({len(spike_times)})")
 
-    # estimate delay between twop start and stimulus start; the stimulus starts
-    # 20-40 frames after the twop has already been going. can't seem to change
-    # that at the acquisition point, so this is the posthoc solution
-    est_delay_frames = 0
-    if auto_delay:
-        stim_drive = np.std(stimulus, axis=1)
-        pop_resp = np.sum(spikes, axis=0)
-        est_delay_frames = find_delay_frames(stim_drive, pop_resp, max_lag=max_lag_frames)
-        # delay = est_delay_frames * np.nanmedian(np.diff(stim_times))
-
-    print('Using delay of {}'.format(est_delay_frames))
-
-    # instead of rolling stimulus data, just crop off beginning of twop recording
-    spikes = spikes[:, est_delay_frames:]
-    spike_times = spike_times[est_delay_frames:]
+    pop_trace = np.mean(spikes, axis=0)
 
     bin_edges = np.concatenate([
         stim_times,
         [stim_times[-1] + np.median(np.diff(stim_times))],
     ])
+    pop_sum, _ = np.histogram(spike_times, bins=bin_edges, weights=pop_trace)
+    counts, _ = np.histogram(spike_times, bins=bin_edges)
+    counts[counts == 0] = 1
+    pop_rate_per_frame = pop_sum / counts
 
-    sta_light_all = np.zeros((n_cells, 2 * window + 1, n_features))
-    sta_dark_all = np.zeros((n_cells, 2 * window + 1, n_features))
-    mean_stim_intensity = np.mean(stimulus, axis=1)
+    est_delay_frames = 0
+    if auto_delay:
+        est_delay_frames = find_delay_frames(
+            stim_mean_trace,
+            pop_rate_per_frame,
+            max_lag=max_lag_frames
+        )
+        delay = est_delay_frames * np.median(np.diff(stim_times))
+
+        stim_times_shifted = stim_times + (delay if delay is not None else 0.0)
+    else:
+        stim_times_shifted = stim_times
+
+    sta_all = np.zeros((n_cells, window + 1, n_features))
     eps = 1e-9
 
-    print('  -> Computing STA for cells (slow!).')
-    for cell_idx in tqdm(range(n_cells)):
-        cell_spikes = spikes[cell_idx]
+    for cell_idx in tqdm(range(50)):
+        cell_spikes = spikes[cell_idx,:]
 
-        # bin cell's spikes into stimulus frame bins
-        spike_sum, _ = np.histogram(spike_times, bins=bin_edges, weights=cell_spikes)
-        counts, _ = np.histogram(spike_times, bins=bin_edges)
-        counts[counts == 0] = 1
-        spike_rate_per_frame = spike_sum / counts
+        interp_fn = interp1d(
+            spike_times,
+            cell_spikes,
+            kind="linear",
+            fill_value="extrapolate",
+            assume_sorted=True
+        )
+        spike_rate_per_frame = interp_fn(stim_times_shifted)
 
-        sta_light = np.zeros((2 * window + 1, n_features))
-        sta_dark = np.zeros((2 * window + 1, n_features))
-        total_light_rate = 0.0
-        total_dark_rate = 0.0
+        sta = np.zeros((window + 1, n_features))
+        total_rate = 0.
 
         for i, rate in enumerate(spike_rate_per_frame):
-            if rate <= 0 or i < window or i + window >= n_stim:
+            if rate <= 0 or i < window or i + window + 1 >= n_stim:
                 continue
 
-            stim_segment = stimulus[i - window : i + window + 1]
-
-            if separate_light_dark:
-                if mean_stim_intensity[i] > 0:
-                    sta_light += rate * stim_segment
-                    total_light_rate += rate
-                else:
-                    sta_dark += rate * stim_segment
-                    total_dark_rate += rate
-            else:
-                sta_light += rate * stim_segment
-                total_light_rate += rate
-
-        if separate_light_dark:
-            sta_light /= (total_light_rate + eps)
-            sta_dark /= (total_dark_rate + eps)
-        else:
-            sta_light /= (total_light_rate + eps)
-            sta_dark = None # is this a bad idea?
-
-        sta_light_all[cell_idx] = sta_light
-        if separate_light_dark:
-            sta_dark_all[cell_idx] = sta_dark
+            stim_segment = flat_signed[i - window : i+1 ]
+ 
+            sta += rate * stim_segment
+            total_rate += rate
+                
+        sta /= (total_rate + eps)
+        sta_all[cell_idx] = sta
 
     lag_axis = np.arange(-window, window + 1)
 
-    return sta_light_all, sta_dark_all, lag_axis, est_delay_frames
+    return sta_all, lag_axis, est_delay_frames
+
 
 def calc_sparse_noise_STAs(preproc_path, stimpath=None):
     if stimpath is None:
@@ -136,8 +131,39 @@ def calc_sparse_noise_STAs(preproc_path, stimpath=None):
     stimulus = np.load(stimpath)[:,:,:,0]
 
     data = fm2p.read_h5(preproc_path)
-    spikes = data['norm_spikes']
-    stim_times = data['stimT']
+
+    norm_spikes = data['s2p_spks']
+    stimT = data['stimT']
+    stimT = stimT - stimT[0]
     twopT = data['twopT']
 
-    return compute_spatial_sta(stimulus, spikes, stim_times, twopT)
+    if stimulus.max() <= 1.0:
+        stimulus = stimulus * 255.0
+
+    sta_all, lag_axis, delay = compute_calcium_sta_spatial(
+        stimulus,
+        norm_spikes,
+        stimT,
+        twopT,
+        window=15,
+        auto_delay=False
+    )
+
+    return sta_all
+
+    # pdf = 
+
+    # for c in range(np.size(sta_all,0)):
+    #     fig, axs = plt.subplots(2,8, dpi=300, figsize=(12,2.5))
+    #     axs = axs.flatten()
+    #     for i in range(15):
+    #         # l = i+7
+    #         vextent = np.nanmax(np.abs(sta_all[c]))
+    #         axs[i].imshow(
+    #             sta_all[c,i,:].reshape([np.size(stimulus, 1), np.size(stimulus, 2)]),
+    #             vmin=-vextent, vmax=vextent, cmap='coolwarm')
+    #         axs[i].axis('off')
+    #         axs[i].set_title('{:.3} s'.format(lag_axis[i]*(1/7.5)))
+    #     axs[-1].axis('off')
+    #     fig.suptitle('cell {}'.format(c))
+    #     fig.tight_layout()
