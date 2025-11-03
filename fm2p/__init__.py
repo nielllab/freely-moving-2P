@@ -284,9 +284,8 @@ from .utils.PETH import (
 )
 
 from .utils.sparse_noise import (
-    compute_spatial_sta,
+    compute_calcium_sta_spatial,
     find_delay_frames,
-    calc_combined_on_off_map,
     calc_sparse_noise_STAs
 )
 
