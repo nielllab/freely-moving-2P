@@ -31,205 +31,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import fm2p
 
 
-def calc_revcorr(preproc_path, axons=False):
-    """
-    Compute tuning reliability and modulation for a single preprocessed file (no light/dark periods).
-
-    Parameters
-    ----------
-    preproc_path : str
-        Path to the preprocessed HDF5 file.
-    axons : bool, optional
-        If True, use axon-specific logic (not currently used).
-    """
-    # Load preprocessed data
-    if type(preproc_path) == str:
-        data = fm2p.read_h5(preproc_path)
-    elif type(preproc_path) == dict:
-        data = preproc_path
-
-    spikes = data['norm_spikes'].copy()
-
-    theta = data['theta_interp'].copy()
-    phi = data['phi_interp'].copy()
-
-    retinocentric = data['retinocentric'].copy()
-    egocentric = data['egocentric'].copy()
-
-    distance = data['dist_to_pillar'].copy()
-    cdistance = data['dist_to_center'].copy()
-    pillar_size = data['pillar_size'].copy()
-    yaw = data['head_yaw_deg'][:-1].copy()
-
-    speed = data['speed'].copy()
-    speeduse = speed > 1.5
-
-    # Define bin edges for each variable
-    retino_bins = np.linspace(-180, 180, 27)
-    ego_bins = np.linspace(-180, 180, 27)
-    yaw_bins = np.linspace(-180, 180, 27)
-    theta_bins = np.linspace(
-        np.nanpercentile(theta, 10),
-        np.nanpercentile(theta, 90),
-        13
-    )
-    phi_bins = np.linspace(
-        np.nanpercentile(phi, 10),
-        np.nanpercentile(phi, 90),
-        13
-    )
-    dist_bins = np.linspace(
-        np.nanpercentile(distance, 10),
-        np.nanpercentile(distance, 90),
-        13
-    )
-    cdist_bins = np.linspace(
-        np.nanpercentile(cdistance, 10),
-        np.nanpercentile(cdistance, 90),
-        13
-    )
-    psize_bins = np.linspace(
-        np.nanpercentile(pillar_size, 10),
-        np.nanpercentile(pillar_size, 90),
-        13
-    )
-
-    vardict = {
-        'yaw': {
-            'vec': yaw,
-            'bins': yaw_bins
-        },
-        'theta': {
-            'vec': theta,
-            'bins': theta_bins
-        },
-        'phi': {
-            'vec': phi,
-            'bins': phi_bins
-        },
-        'retinocentric': {
-            'vec': retinocentric,
-            'bins': retino_bins
-        },
-        'egocentric': {
-            'vec': egocentric,
-            'bins': ego_bins
-        },
-        'distance_to_pillar': {
-            'vec': distance,
-            'bins': dist_bins
-        }
-        # 'distance_to_center': {
-        #     'vec': cdistance,
-        #     'bins': cdist_bins
-        # },
-        # 'pillar_size': {
-        #     'vec': pillar_size,
-        #     'bins': psize_bins
-        # }
-    }
-
-    reliability_dict = {}
-    
-    for k, v in vardict.items():
-        print('  -> Calculating reliability for tuning to: {}'.format(k))
-
-        behavior = v['vec']
-        bins = v['bins']
-
-        add_dict = fm2p.calc_reliability_d(
-            spikes[:,speeduse],
-            behavior[speeduse],
-            bins,
-            10,
-            100
-        )
-
-        tbins, tunings, errors = fm2p.tuning_curve(
-            spikes[:,speeduse],
-            behavior[speeduse],
-            bins
-        )
-        add_dict['tuning_bins'] = tbins
-        add_dict['tuning_curve'] = tunings
-        add_dict['tuning_stderr'] = errors
-
-        # In addition to the shufffle reliability metric, check the spectral slope of power across
-        # frequencies; smooth curves will decay steeply while noisy curves will have a flat or shallow
-        # decay. A clean curve will have a value of -2 to -5. Noisy will be -1 and above. Don't want to
-        # be too strict, so I'm applying the threshold of -1.25, which seems to exclude the appropriate
-        # curves while including clean responses.
-        spec_val, spec_rel = fm2p.calc_spectral_noise(
-            tunings,
-            thresh=-1.25
-        )
-        add_dict['reliable_by_noise'] = spec_rel
-        add_dict['spectral_noise'] = spec_val
-
-        is_reliable = spec_rel.copy() * add_dict['reliable_by_shuffle'].copy()
-        add_dict['is_reliable'] = is_reliable
-
-        mod, is_modulated = fm2p.calc_multicell_modulation(
-            tunings,
-            spikes[:,speeduse],
-            0.33
-        )
-
-        add_dict['modulation'] = mod
-        add_dict['is_modulated'] = is_modulated
-
-        reliability_dict[k] = add_dict
-
-    savedir = os.path.split(preproc_path)[0]
-    basename = os.path.split(preproc_path)[1][:-11]
-    savepath = os.path.join(savedir, '{}_revcorr_results.h5'.format(basename))
-    fm2p.write_h5(savepath, reliability_dict)
-
-    print('Saved {}'.format(savepath))
-
-
-# def calc_2d_rate_map(spikes, angular_bin_edges, dist_bin_edges):
-#     # spikes should be for all cells (2D array)
-
-#     N_cells = np.size(spikes, 0)
-#     N_angular_bins = len(angular_bin_edges) -1
-#     N_distance_bins = len(dist_bin_edges) - 1
-
-#     occupancy = np.zeros() * np.nan
-
-#     # first, calculate occupancy of pillar    
-#     for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
-#         dist_bin_end = dist_bin_start + self.dist_bin_size
-        
-#         # create a mask of where the distance falls within the current distance bin
-#         mask = (ray_distances >= dist_bin_start) & (ray_distances < dist_bin_end)
-
-#         # sum across frames to get occupancy for each angular bin
-#         occupancy[:, d] = np.sum(mask, axis=0)
-
-#     rate_maps = np.zeros((N_cells, N_angular_bins, N_distance_bins))
-
-#     for c in tqdm(range(N_cells)):
-#         spike_rate = spikes[c, :]
-#         for f in range(len(spike_rate)):
-#             for a, ang in enumerate(np.arange(0, 360, self.ray_width)):
-#                 for d, dist_bin_start in enumerate(self.dist_bin_edges[:-1]):
-#                     dist_bin_end = dist_bin_start + self.dist_bin_size
-#                     if (self.ray_distances[f, a] >= dist_bin_start) and (self.ray_distances[f, a] < dist_bin_end):
-#                         self.rate_maps[c, a, d] += spike_rate[f]
-
-#         self.rate_maps[c, :, :] /= self.occupancy + 1e-6  # avoid division by zero
-
-#     return self.rate_maps
-
-# def calc_revcorr2():
-#     # light/dark recording
-#     # 2D receptive fields, where second axis is distance
-
-
-
-
-def calc_revcorr_ltdk(preproc_path, IMU=False, save=True):
+def calc_revcorr(preproc_path, IMU=False, save=True):
     """
     Compute tuning reliability and modulation for a single preprocessed file with light/dark periods.
 
@@ -315,8 +117,12 @@ def calc_revcorr_ltdk(preproc_path, IMU=False, save=True):
             print('Extending by one addtl timepoint. If it still errors after this, check your data alignment.')
             # in case we need to do it one more time.
             # if this doesn't work, let it error because its a bigger problem
-            yaw = np.append(yaw, yaw[-1])
-            speed = np.append(speed, speed[-1])
+            try:
+                yaw = np.append(yaw, yaw[-1])
+                speed = np.append(speed, speed[-1])
+            except:
+                yaw = yaw[:-1]
+                speed = speed[:-1]
 
 
     assert len(set(len_check)) == 1, 'Unequal lengths along time axis. Lenghts are {}'.format(len_check)
@@ -592,7 +398,7 @@ def revcorr():
 
         if cfg['ltdk']:
 
-            _ = calc_revcorr_ltdk(preproc_path, IMU=cfg['imu'])
+            _ = calc_revcorr(preproc_path, IMU=cfg['imu'])
         
         elif not cfg['ltdk']:
 

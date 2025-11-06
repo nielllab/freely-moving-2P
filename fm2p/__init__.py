@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 """
 Preprocessing and analysis for freely moving two-photon data.
-DMM, 2024
+
+DMM, 2024-2025
 """
 
 __version__ = "0.1"
@@ -19,7 +21,8 @@ from .utils.helper import (
     nan_interp_circular,
     calc_r2,
     mask_non_nan,
-    interp_short_gaps
+    interp_short_gaps,
+    angular_diff_deg
 )
 
 from .utils.linalg import (
@@ -202,10 +205,6 @@ from .utils.tuning import (
     calc_spectral_noise
 )
 
-# from .mapRF import map_receptive_fields_from_bars
-from .summarize_revcorr import summarize_revcorr
-from .summarize_revcorr_ltdk import summarize_revcorr_ltdk
-
 from .utils.axons import (
     get_single_independent_axons,
     get_grouped_independent_axons,
@@ -234,8 +233,7 @@ from .pred_pupil import pred_pupil
 
 from .revcorr import (
     revcorr,
-    calc_revcorr,
-    calc_revcorr_ltdk
+    calc_revcorr
 )
 
 from .utils.multicell_GLM import (
@@ -263,7 +261,8 @@ from .utils.sensor_fusion import (
 
 from .utils.imu import (
     read_IMU,
-    upsample_yaw,
+    detrend_gyroz_weighted_gaussian,
+    detrend_gyroz_simple_linear,
     unwrap_degrees
 )
 
@@ -284,9 +283,8 @@ from .utils.PETH import (
 )
 
 from .utils.sparse_noise import (
-    compute_spatial_sta,
+    compute_calcium_sta_spatial,
     find_delay_frames,
-    calc_combined_on_off_map,
     calc_sparse_noise_STAs
 )
 
@@ -303,3 +301,4 @@ from .polar_revcorr import (
 )
 
 from .sparse_noise_mapping import sparse_noise_mapping
+from .summarize_session import summarize_session

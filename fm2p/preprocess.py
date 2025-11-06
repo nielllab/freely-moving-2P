@@ -489,6 +489,10 @@ def preprocess(cfg_path=None, spath=None):
                 eyeT[eyeStart:eyeEnd] - eyeT[eyeStart],
                 twopT
             )
+            theta_trim = theta[eyeStart:eyeEnd]
+            eyeT_trim = eyeT[eyeStart:eyeEnd] - eyeT[eyeStart]
+            phi_trim = phi[eyeStart:eyeEnd]
+
 
             if cfg['imu']:
 
@@ -519,9 +523,7 @@ def preprocess(cfg_path=None, spath=None):
                     twopT,
                     eyeStart,
                     eyeEnd
-                )        
-
-        print('  -> Saving preprocessed dataset to file.')
+                )
 
         if not sn:
             top_xyl_ = fm2p.to_dict_of_arrays(top_xyl)
@@ -535,7 +537,7 @@ def preprocess(cfg_path=None, spath=None):
                 **ellipse_dict,
                 **eye_xyl_,
                 **twop_dict,
-                **refframe_dict
+                **refframe_dict,
             }
 
             preprocessed_dict['eyeT_startInd'] = eyeStart
@@ -543,6 +545,9 @@ def preprocess(cfg_path=None, spath=None):
         
             preprocessed_dict['theta_interp'] = theta_interp
             preprocessed_dict['phi_interp'] = phi_interp
+            preprocessed_dict['theta_trim'] = theta_trim
+            preprocessed_dict['phi_trim'] = phi_trim
+            preprocessed_dict['eyeT_trim'] = eyeT_trim
             preprocessed_dict['head_x'] = headx
             preprocessed_dict['head_y'] = heady
 
@@ -561,44 +566,31 @@ def preprocess(cfg_path=None, spath=None):
             if cfg['imu']:
                 preprocessed_dict = {**preprocessed_dict, **imu_dict}
 
-        # fm2p.run_preprocessing_diagnostics(preprocessed_dict, ltdk=ltdk)
+        # fm2p.run_preprocessing_diagnostics(preprocessed_dict)
 
-        # if not cfg['imu']:
-        if not sn:
-            peth_dict = fm2p.calc_PETHs(preprocessed_dict)
-            preprocessed_dict = {**preprocessed_dict, **peth_dict}
+            # revcorr_dict = fm2p.calc_revcorr(preprocessed_dict, save=False, IMU=cfg['imu'])
+            # preprocessed_dict = {**preprocessed_dict, **revcorr_dict}
 
         if not sn and cfg['imu']:
-            peth_imu_dict = fm2p.calc_PETHs_IMU(preprocessed_dict)
-            preprocessed_dict = {**preprocessed_dict, **peth_imu_dict}
 
-        # if not sn:
-        #     revcorr_dict = fm2p.calc_revcorr_ltdk(preprocessed_dict, save=False, IMU=imu)
-        #     preprocessed_dict = {**preprocessed_dict, **revcorr_dict}
+            print('  -> Detrending integrated gyro along z-axis.')
+            # use integral of gyro_z and use topdown measure of head yaw as a template
+            # to correct for the accumulated error.
+            upsampled_yaw = fm2p.detrend_gyroz_weighted_gaussian(preprocessed_dict, 120, 1.)
+            preprocessed_dict['upsampled_yaw'] = upsampled_yaw
+
+            print('  -> Calculating PETHS.')
+            peth_imu_dict = fm2p.calc_PETHs(preprocessed_dict)
+            preprocessed_dict = {**preprocessed_dict, **peth_imu_dict}
 
         if sn:
 
             preprocessed_dict = twop_dict
-
             preprocessed_dict['stimT'] = sn_stimT
 
-            # print('  -> Measuring head-fixed receptive fields using sparse noise stimulus (slow!)')
-            # sn_dict = fm2p.measure_sparse_noise_receptive_fields(cfg, preprocessed_dict)
 
-            # preprocessed_dict = {**preprocessed_dict, **sn_dict}
-
-        if not sn and cfg['imu']:
-            # use integral of gyro_z and use topdown measure of head yaw as a template
-            # to correct for the accumulated error.
-            upsampled_yaw = fm2p.upsample_yaw(preprocessed_dict)
-            preprocessed_dict['upsampled_yaw'] = upsampled_yaw
-
-        # if cfg['imu']:
-        #     fm2p.imu_revcorr(preprocessed_dict)
-
-
-        _savepath = os.path.join(rpath, '{}_preproc_v2.h5'.format(full_rname))
-        print('Writing preprocessed data to {}'.format(_savepath))
+        _savepath = os.path.join(rpath, '{}_preproc.h5'.format(full_rname))
+        print('  -> Writing preprocessed data to {}'.format(_savepath))
         fm2p.write_h5(_savepath, preprocessed_dict)
 
         # If a real config path was given, write some new data into the dictionary and then save a new preprocessed_config
@@ -608,16 +600,16 @@ def preprocess(cfg_path=None, spath=None):
             cfg['{}_eye_video'.format(rname)] = eyecam_deinter_video
 
 
-    if cfg_path is not None:
+    # if cfg_path is not None:
 
-        print('  -> Updating config yaml file.')
+    #     print('  -> Updating config yaml file.')
 
-        # Write a new version of the config file. Maybe change this to overwrite previous?
-        _newsavepath = os.path.join(os.path.split(cfg_path)[0], 'preprocessed_config_v2.yaml')
-        fm2p.write_yaml(_newsavepath, cfg)
+    #     # Write a new version of the config file. Maybe change this to overwrite previous?
+    #     _newsavepath = os.path.join(os.path.split(cfg_path)[0], 'preprocessed_config.yaml')
+    #     fm2p.write_yaml(_newsavepath, cfg)
 
 
 if __name__ == '__main__':
 
-    preprocess()
+    preprocess(r'K:\Mini2P_V1PPC\251029_DMM_DMM061_pos03\config.yaml')
 

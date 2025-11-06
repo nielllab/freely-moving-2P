@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import multiprocessing
+from scipy.ndimage import gaussian_filter1d
+from scipy.interpolate import interp1d
 
 import fm2p
 
@@ -137,7 +139,7 @@ def unwrap_degrees(angles, period=360, threshold=180):
     return np.array(unwrapped)
 
 
-def upsample_yaw(data, do_plot=False):
+def detrend_gyroz_simple_linear(data, do_plot=False):
 
     dt = 1 / np.nanmedian(np.diff(data['imuT_trim']))
     gyro_z = np.cumsum(data['gyro_z_trim'])/dt
@@ -191,5 +193,110 @@ def upsample_yaw(data, do_plot=False):
         ax4.set_title('shown on a longer time scale')
 
         fig.tight_layout()
+        fig.show()
 
     return gyro_z_corrected
+
+
+def detrend_gyroz_weighted_gaussian(data, sigma=5, gaussian_weight=1.0):
+
+    # signal_a is the integral of gyro along z-axis
+    # signal_b is the yaw from topdown camera
+    # probably should name these more intuitively
+
+    dt = 1 / np.nanmedian(np.diff(data['imuT_trim']))
+    signal_a = np.cumsum(data['gyro_z_trim'])/dt
+    signal_a = signal_a % 360
+
+    if len(data['twopT']) == len(data['head_yaw_deg']):
+        yaw = data['head_yaw_deg']
+    else:
+        timestamps = np.linspace(0, 1, num=len(data['twopT']))
+        signal_time = np.linspace(0, 1, num=len(data['head_yaw_deg']))
+        f = interp1d(signal_time, data['head_yaw_deg'], kind='linear')
+        yaw = f(timestamps) # resampled to match real timestamp length
+
+    signal_b = fm2p.interpT(yaw, data['twopT'], data['imuT_trim'])
+    signal_b_initial = signal_b.copy()
+
+    gyro_yaw_diff = signal_a - fm2p.interpT(yaw, data['twopT'], data['imuT_trim'])
+
+    # nan out any huge jumps in the head yae from topdown. could
+    # be poor tracking thorwing a crazy value in that gets past likelihoood threshold
+    signal_b[np.concatenate([[0],(np.abs(fm2p.angular_diff_deg(signal_b))>15.)])] = np.nan
+
+    a_rad = np.deg2rad(signal_a)
+    b_rad = np.deg2rad(signal_b)
+    n = len(a_rad)
+
+    # handle nans in signal_b
+    valid_b = ~np.isnan(b_rad)
+    b_rad_filled = np.nan_to_num(b_rad, nan=0.0)
+
+    # circular components
+    sin_a, cos_a = np.sin(a_rad), np.cos(a_rad)
+    sin_b, cos_b = np.sin(b_rad_filled), np.cos(b_rad_filled)
+
+    # gaussian-smoothed circular means
+    sin_mean_a = gaussian_filter1d(sin_a, sigma)
+    cos_mean_a = gaussian_filter1d(cos_a, sigma)
+    sin_mean_b = gaussian_filter1d(sin_b, sigma)
+    cos_mean_b = gaussian_filter1d(cos_b, sigma)
+
+    # Normalize for missing data
+    norm = gaussian_filter1d(valid_b.astype(float), sigma)
+    norm = np.maximum(norm, 1e-8)
+    sin_mean_b /= norm
+    cos_mean_b /= norm
+
+    # convert means back to angles
+    mean_a = np.arctan2(sin_mean_a, cos_mean_a)
+    mean_b = np.arctan2(sin_mean_b, cos_mean_b)
+
+    # wrapped difference between signals
+    diff = np.angle(np.exp(1j * (b_rad - a_rad))) # rad
+
+    # smooth difference w/out nans
+    diff_filled = np.nan_to_num(diff, nan=0.0)
+    smoothed_diff = gaussian_filter1d(diff_filled, sigma)
+    smoothed_diff /= norm  # renormalize for missing data
+
+    # apply weight
+    corrected_rad = a_rad + gaussian_weight * smoothed_diff
+
+    corrected_deg = np.rad2deg(np.mod(corrected_rad, 2 * np.pi))
+
+    new_g_v_y_diff = corrected_deg - signal_b_initial
+
+    detrended_out = {
+        'igyro_corrected_deg': corrected_deg,
+        'igyro_corrected_rad': corrected_rad,
+        'igyro_yaw_raw_diff': gyro_yaw_diff,
+        'igyro_yaw_detrended_diff': new_g_v_y_diff
+    }
+
+    return detrended_out
+
+def repair_imu_disconnection(df, imuT):
+
+    # mask NaNs. some recordings
+    allcols = [df[col].to_numpy() for col in df.columns.values]
+    nandrop_cols = fm2p.mask_non_nan(allcols)
+
+    # final drop in diff values, i.e., when the trace flatlines. do this on each accelerometer
+    # signal and take the median of the three
+    finaldrop = np.nanmedian([
+        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[0]))<(1/100))<0.5)[-1],
+        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[1]))<(1/100))<0.5)[-1],
+        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[1]))<(1/100))<0.5)[-1]
+    ])
+
+    # if final drop is basiclly at the end, this probably is not a problem
+    if len(nandrop_cols[0])-25 > finaldrop:
+        print('  -> Found disconnection of IMU; trimming at sample={}, ({}%)'.format(
+            finaldrop,
+            finaldrop/len(df)
+        ))
+        df.iloc[:int(finaldrop)]
+
+        # then ensure it matches length of timestamps

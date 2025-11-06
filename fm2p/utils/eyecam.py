@@ -526,6 +526,10 @@ class Eyecam():
             
             # Eye axes relative to center
             w = ellipse[:,7]
+
+            artc_x = []
+            artc_y = []
+
             for i in range(0,len(usegood_ellipcalb)):
 
                 _show = usegood_ellipcalb[i::fig_dwnsmpl]
@@ -534,9 +538,12 @@ class Eyecam():
                          5 * np.cos(w[_show])]),                            \
                          (ellipse[_show,12] + [-5*np.sin(w[_show]),         \
                          5*np.sin(w[_show])]))
+                artc_x.append((ellipse[_show,11] + [-5 * np.cos(w[_show]),5*np.cos(w[_show])]))
+                artc_y.append((ellipse[_show,12] + [-5*np.sin(w[_show]), 5*np.sin(w[_show])]))
 
             ax6.plot(cam_cent[0], cam_cent[1], 'r*')
             ax6.set_title('eye axes relative to center')
+
 
         except Exception as e:
             print('Figure error in plots of ellipticity and axes relative to center')
@@ -610,6 +617,10 @@ class Eyecam():
 
         for k,v in ellipse_dict.items():
             ellipse_dict[k] = np.array(v)
+
+        ellipse_dict['axes_rel_cent_x'] = artc_x
+        ellipse_dict['axes_rel_cent_y'] = artc_y
+        ellipse_dict['camcent'] = cam_cent
 
         return xyl, ellipse_dict
     

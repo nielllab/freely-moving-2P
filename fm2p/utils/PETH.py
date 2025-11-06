@@ -225,22 +225,22 @@ def calc_eye_head_movement_times(data):
     shifted_gaze = 240
 
     # gaze-shifting saccades
-    gaze_left = eyeT[(
+    gaze_left = t1[(
         (dHead > shifted_head) &
         (dGaze > shifted_gaze)
     )]
-    gaze_right = eyeT[(
+    gaze_right = t1[(
         (dHead < -shifted_gaze) &
         (dGaze < -shifted_gaze)
     )]
 
     # compensatory eye/head movements
-    comp_left = eyeT[(
+    comp_left = t1[(
         (dHead > shifted_head) &
         (dGaze < still_gaze)   &
         (dGaze > -still_gaze)
     )]
-    comp_right = eyeT[(
+    comp_right = t1[(
         (dHead < -shifted_head) &
         (dGaze < still_gaze)    &
         (dGaze > -still_gaze)
@@ -249,7 +249,8 @@ def calc_eye_head_movement_times(data):
     gaze_left = drop_redundant_saccades(gaze_left)
     gaze_right = drop_redundant_saccades(gaze_right)
 
-    # with two arguments, it also removes nearby events. otherwise, just the repeated events
+    # with two arguments, it also removes nearby events.
+    # otherwise, just the repeated events
     comp_left = drop_redundant_saccades(comp_left, comp_right)
     comp_right = drop_redundant_saccades(comp_right, comp_left)
 
@@ -260,7 +261,8 @@ def calc_eye_head_movement_times(data):
         'comp_right': comp_right,
         'dEye': dEye,
         'dHead': dHead,
-        'dGaze': dGaze
+        'dGaze': dGaze,
+        'eyeT1': t1
     }
 
     return saccade_dict
@@ -275,62 +277,36 @@ def calc_PETHs(data):
     win_frames = np.arange(-15,16)
     win_times = win_frames*(1/7.52)
 
-    gaze_right_sps, gaze_right_sps_stderr, gaze_right_norm_sps, gaze_right_norm_stderr_sps = calc_hist_PETH(
-        sps, saccade_dict['gaze_right'], win_frames
-    )
-    gaze_left_sps, gaze_left_sps_stderr, gaze_left_norm_sps, gaze_left_norm_stderr_sps = calc_hist_PETH(
-        sps, saccade_dict['gaze_left'], win_frames
-    )
-    comp_right_sps, comp_right_sps_stderr, comp_right_norm_sps, comp_right_norm_stderr_sps = calc_hist_PETH(
-        sps, saccade_dict['comp_right'], win_frames
-    )
-    comp_left_sps, comp_left_sps_stderr, comp_left_norm_sps, comp_left_norm_stderr_sps = calc_hist_PETH(
-        sps, saccade_dict['comp_right'], win_frames
-    )
-
-    gaze_right_dFF, gaze_right_dFF_stderr, gaze_right_norm_dFF, gaze_right_norm_stderr_dFF = calc_hist_PETH(
-        dFF, saccade_dict['gaze_right'], win_frames
-    )
-    gaze_left_dFF, gaze_left_dFF_stderr, gaze_left_norm_dFF, gaze_left_norm_stderr_dFF = calc_hist_PETH(
-        dFF, saccade_dict['gaze_left'], win_frames
-    )
-    comp_right_dFF, comp_right_dFF_stderr, comp_right_norm_dFF, comp_right_norm_stderr_dFF = calc_hist_PETH(
-        dFF, saccade_dict['comp_right'], win_frames
-    )
-    comp_left_dFF, comp_left_dFF_stderr, comp_left_norm_dFF, comp_left_norm_stderr_dFF = calc_hist_PETH(
-        dFF, saccade_dict['comp_right'], win_frames
-    )
-
-    norm_comp__sps = norm_psth(right_PETHs_sps)
-    normL_sps = norm_psth(left_PETHs_sps)
-    normU_sps = norm_psth(up_PETHs_sps)
-    normD_sps = norm_psth(down_PETHs_sps)
-
-    normR_dFF = norm_psth(right_PETHs_dFF)
-    normL_dFF = norm_psth(left_PETHs_dFF)
-    normU_dFF = norm_psth(up_PETHs_dFF)
-    normD_dFF = norm_psth(down_PETHs_dFF)
- 
-    peth_dict = {
+    peth_dict= {
         'win_frames': win_frames,
-        'win_times': win_times,
-        'right_PETHs_dFF': right_PETHs_dFF,
-        'left_PETHs_dFF': left_PETHs_dFF,
-        'up_PETHs_dFF': up_PETHs_dFF,
-        'down_PETHs_dFF': down_PETHs_dFF,
-        'norm_right_PETHs_dFF': normR_dFF,
-        'norm_left_PETHs_dFF': normL_dFF,
-        'norm_up_PETHs_dFF': normU_dFF,
-        'norm_down_PETHs_dFF': normD_dFF,
-        'right_PETHs_sps': right_PETHs_sps,
-        'left_PETHs_sps': left_PETHs_sps,
-        'up_PETHs_sps': up_PETHs_sps,
-        'down_PETHs_sps': down_PETHs_sps,
-        'norm_right_PETHs_sps': normR_sps,
-        'norm_left_PETHs_sps': normL_sps,
-        'norm_up_PETHs_sps': normU_sps,
-        'norm_down_PETHs_sps': normD_sps
+        'win_times': win_times
     }
 
-    return peth_dict
+    vars = ['gaze_left', 'gaze_right', 'comp_left', 'comp_right']
+
+    for i, varname in enumerate(vars):
+
+        peth_sps, petherr_sps, norm_sps, norm_err = calc_hist_PETH(
+            sps,
+            saccade_dict[varname],
+            win_frames
+        )
+        peth_dict['{}_peth_sps'.format(varname)] = peth_sps
+        peth_dict['{}_peth_err_sps'.format(varname)] = petherr_sps
+        peth_dict['{}_norm_peth_sps'.format(varname)] = norm_sps
+        peth_dict['{}_norm_peth_err_sps'.format(varname)] = norm_err
+
+        peth_dff, petherr_dff, norm_dff, norm_dff = calc_hist_PETH(
+            dFF,
+            saccade_dict[varname],
+            win_frames
+        )
+        peth_dict['{}_peth_dff'.format(varname)] = peth_dff
+        peth_dict['{}_peth_err_dff'.format(varname)] = petherr_dff
+        peth_dict['{}_norm_peth_dff'.format(varname)] = norm_dff
+        peth_dict['{}_norm_peth_err_dff'.format(varname)] = norm_dff
+
+    dict_out = {**saccade_dict, **peth_dict,}
+
+    return dict_out
 

@@ -74,7 +74,12 @@ np.save(tmp_stim_path, stimarr[:,:,:,np.newaxis])  # add color channel
 
 cfg = {'sparse_noise_stim_path': tmp_stim_path}
 
-out = sparse_noise.measure_sparse_noise_receptive_fields(cfg, data, ISI=False, use_lags=True)
+flat_stim = np.reshape(
+    stimarr,
+    [np.size(stimarr,0), np.size(stimarr,1)*np.size(stimarr,2)]
+)
+
+out = sparse_noise.compute_calcium_sta_spatial(flat_stim, sp_per_frame[0,:], twopT, twopT)
 
 # print('STA shape:', out['STAs'].shape)
 # print('rgb_maps shape:', out['rgb_maps'].shape)
@@ -87,13 +92,35 @@ plt.colorbar()
 plt.savefig(os.path.join(repo_root, 'tests', 'synthetic_rf_ground_truth.png'), dpi=200)
 print('Saved synthetic_rf_ground_truth.png')
 
-for l_i, lag in enumerate(np.arange(-5,5,1)):
-    rgb0 = out['rgb_maps'][0,l_i,:,:,:]
-    plt.figure(figsize=(4,4))
-    plt.imshow(rgb0)
-    plt.title('cell 0 lag={}'.format(lag))
-    plt.axis('off')
-    # plt.colorbar()
-    plt.savefig(os.path.join(repo_root, 'tests', 'synthetic_rf_result_neuron0_lag{}_v2.png'.format(lag)), dpi=200)
-    print('Saved synthetic_rf_result_neuron0_lag{}.png'.format(lag))
+# for l_i, lag in enumerate(np.arange(-5,5,1)):
+#     rgb0 = out['rgb_maps'][0,l_i,:,:,:]
+#     plt.figure(figsize=(4,4))
+#     plt.imshow(rgb0)
+#     plt.title('cell 0 lag={}'.format(lag))
+#     plt.axis('off')
+#     # plt.colorbar()
+#     plt.savefig(os.path.join(repo_root, 'tests', 'synthetic_rf_result_neuron0_lag{}_v2.png'.format(lag)), dpi=200)
+#     print('Saved synthetic_rf_result_neuron0_lag{}.png'.format(lag))
     
+sta_light = out['lightSTA']
+sta_dark = out['darkSTA']
+lags = out['lags']
+
+fig, axs = plt.subplots(2,10, dpi=300, figsize=(12,4))
+for i in range(10):
+    lightmax = np.nanmax(sta_light)
+    axs[0,i].imshow(
+        sta_light[i,:].reshape([stimX, stimY]),
+        vmin=-lightmax, vmax=lightmax, cmap='coolwarm')
+    axs[0,i].axis('off')
+    axs[0,i].set_title('light, lag={:.03}'.format(lags[i]*0.5))
+    darkmax = np.nanmax(sta_dark)
+    axs[1,i].imshow(
+        sta_dark[i,:].reshape([stimX, stimY]),
+        vmin=-darkmax, vmax=darkmax, cmap='coolwarm')
+    axs[1,i].axis('off')
+    axs[1,i].set_title('dark, lag={:.03}'.format(lags[i]*0.5))
+fig.tight_layout()
+plt.savefig(os.path.join(repo_root, 'tests', 'STAs.png'), dpi=200)
+
+

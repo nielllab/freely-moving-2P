@@ -1,4 +1,4 @@
-function [path1_phys] = inferSpikes(path1_phys,fps,timestamps,bins)
+function [path1_phys] = inferSpikes()
 
 %{
 inferSpikes Performs spike inference on fluorescence traces contained in the suite2p output container.
@@ -18,12 +18,21 @@ MCMCcorrs: nx1 avg correlation between 50 random spike MCMC samples, per
 neuron. used as QC metric.
 
 %}
+
+path1_phys = uigetfile(".mat", "Select suite2p mat file.");
+fps = input(prompt_string, 'f');
+tif_path = uigetfile(".mat", "Select recording tif file.");
+bins = input(prompt_string, 'f');
+
+imf = scanimage.util.opentif(tif_path);
+timestamps = imf.frameTimestamps_sec;
+
 params.Nsamples = 400;
 params.B = 100;
 params.p = 1; 
 params.f = fps;
-%cells = [1:10]; 
-cells = 1:path1_phys.numcells;
+cells = 5:10;
+% cells = 1:path1_phys.numcells;
 
 path1_phys.spiketimes = [];
 path1_phys.spikerates = zeros(path1_phys.numcells,length(bins)-1);
@@ -67,6 +76,7 @@ for i=cells
     path1_phys.spikerates(i,:) = spkrate(samplekeep,:); %spk rates saved in one big mtx for all cells
     path1_phys.MCMCcorrs(i) = meancorr; %mean corr for QC
 
-end
-end
+    save('inferred_spikes.mat', path1_phys);
 
+end
+end

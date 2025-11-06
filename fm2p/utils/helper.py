@@ -396,3 +396,14 @@ def interp_short_gaps(x, max_gap=5):
             i += 1
 
     return x_interp
+
+def angular_diff_deg(angles):
+    """
+    Compute the difference between successive angles in degrees, correctly handling wraparound at 360 deg
+    """
+    
+    angles = np.asarray(angles)
+    diffs = np.diff(angles)
+    diffs = (diffs + 180) % 360 - 180
+
+    return diffs
