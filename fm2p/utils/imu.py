@@ -84,6 +84,14 @@ def read_IMU(vals_path, time_path):
     df['gyro_y'] = -df['gyro_y']
     df['gyro_z'] = -df['gyro_z']
 
+    if np.abs(np.round(len(imuT)*2) - len(df)) < 10:
+        print('  -> Dropping interleaved IMU NaNs')
+        if np.isfinite(df['gyro_x'][0]):
+            df = df.iloc[::2]
+        elif np.isnan(df['gyro_x'][0]):
+            df = df.iloc[1::2]
+        df.reset_index(inplace=True)
+
     n_samps = np.size(df,0)
     roll_pitch = np.zeros([n_samps, 2])
 
@@ -277,26 +285,57 @@ def detrend_gyroz_weighted_gaussian(data, sigma=5, gaussian_weight=1.0):
 
     return detrended_out
 
-def repair_imu_disconnection(df, imuT):
+# def repair_imu_disconnection(data):
 
-    # mask NaNs. some recordings
-    allcols = [df[col].to_numpy() for col in df.columns.values]
-    nandrop_cols = fm2p.mask_non_nan(allcols)
+#     # first, repair NaN interleave
+#     # if there are too many IMU samples for the # timestamps
+#     if np.abs(np.round(len(data['imuT_raw'])*2) - len(data['gyro_z_raw'])) > 10:
+#         return data
 
-    # final drop in diff values, i.e., when the trace flatlines. do this on each accelerometer
-    # signal and take the median of the three
-    finaldrop = np.nanmedian([
-        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[0]))<(1/100))<0.5)[-1],
-        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[1]))<(1/100))<0.5)[-1],
-        np.argwhere((np.diff(fm2p.convfilt(nandrop_cols[1]))<(1/100))<0.5)[-1]
-    ])
+#     valnames = [
+#         'gyro_x_trim',
+#         'gyro_y_trim',
+#         'gyro_z_trim'
+#         'acc_x_trim',
+#         'acc_y_trim',
+#         'acc_z_trim'
+#     ]
 
-    # if final drop is basiclly at the end, this probably is not a problem
-    if len(nandrop_cols[0])-25 > finaldrop:
-        print('  -> Found disconnection of IMU; trimming at sample={}, ({}%)'.format(
-            finaldrop,
-            finaldrop/len(df)
-        ))
-        df.iloc[:int(finaldrop)]
+#     final_drops = []
 
-        # then ensure it matches length of timestamps
+#     for i in range(6):
+#         # take every other sample, but make sure the first one is real and no NaNs
+#         vals = data[valnames[i]]
+#         if np.isfinite(vals[0]):
+#             vals = vals[::2]
+#         elif np.isnan(vals[0]):
+#             vals = vals[1::2]
+
+#         if 'acc' in valnames[i]:
+#             # final drop in diff values, i.e., when the trace flatlines
+#             finaldrop = np.argwhere((np.diff(fm2p.convfilt(vals))<(1/100))<0.5)[-1]
+
+#             if len(vals)-25 > finaldrop:
+#                 final_drops.append(finaldrop)
+
+#         data[valnames[i]] = vals
+
+#     cropind = np.min(final_drops)
+#     cropT = data['imuT_trim'][cropind]
+
+#     'acc_x_eye_interp',
+#     'acc_x_raw',
+#     'acc_x_trim',
+#     'acc_x_twop_interp',
+#     'acc_y_eye_interp',
+#     'acc_y_raw',
+#     'acc_y_trim',
+#     'acc_y_twop_interp',
+#     'acc_z_eye_interp',
+#     'acc_z_raw',
+#     'acc_z_trim',
+#     'acc_z_twop_interp'
+
+
+
+    

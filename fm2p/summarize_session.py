@@ -46,6 +46,10 @@ def summarize_session(preproc_path):
         )
         if len(data[var]) > len(is_running):
             is_running1 = np.append(np.array(False), is_running)
+        elif len(data[var]) < len(is_running):
+            is_running1 = is_running[:-1]
+            if len(data[var]) < len(is_running1):
+                is_running1 = is_running1[:-1]
         else:
             is_running1 = is_running
         axs[0,i+1].hist(data[var][is_running1],
@@ -74,6 +78,10 @@ def summarize_session(preproc_path):
         )
         if len(data[var]) > len(is_running):
             is_running1 = np.append(np.array(False), is_running)
+        elif len(data[var]) < len(is_running):
+            is_running1 = is_running[:-1]
+            if len(data[var]) < len(is_running1):
+                is_running1 = is_running1[:-1]
         else:
             is_running1 = is_running
         axs[1,i+1].hist(data[var][is_running1],
@@ -144,6 +152,8 @@ def summarize_session(preproc_path):
             is_running1 = np.append(np.array(False), is_running)
         elif len(var_trim) < len(is_running):
             is_running1 = is_running[:-1]
+            if len(var_trim) < len(is_running1):
+                is_running1 = is_running1[:-1]
         else:
             is_running1 = is_running
         axs[2,i+2].hist(var_trim[is_running1],
@@ -231,6 +241,8 @@ def summarize_session(preproc_path):
             is_running1 = np.append(np.array(False), is_running)
         elif len(var_trim) < len(is_running):
             is_running1 = is_running[:-1]
+            if len(var_trim) < len(is_running1):
+                is_running1 = is_running1[:-1]
         else:
             is_running1 = is_running
         axs[3,i+2].hist(var_trim[is_running1],
@@ -262,5 +274,7 @@ if __name__ == '__main__':
         filetypes=[('HDF','.h5'),])
 
     summarize_session(preproc_path)
+
+    # summarize_session(r'K:\Mini2P_V1PPC\251029_DMM_DMM061_pos03\fm1\251029_DMM_DMM061_fm_01_preproc.h5')
 
     
