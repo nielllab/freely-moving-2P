@@ -126,6 +126,7 @@ def compute_calcium_sta_spatial(
 
 
 def calc_sparse_noise_STAs(preproc_path, stimpath=None):
+
     if stimpath is None:
         stimpath = r'T:\dylan\sparse_noise_sequence_v7.npy'
     stimulus = np.load(stimpath)[:,:,:,0]
@@ -149,33 +150,65 @@ def calc_sparse_noise_STAs(preproc_path, stimpath=None):
         window=15,
         auto_delay=False
     )
-    # # find best lag so there is only one STA per cell to deal with
-    # best_sta = np.zeros([
-    #     n_cells,
-    #     np.size(sta,2),
-    #     np.size(sta,3)
-    # ])
-    # best_lags = np.zeros(n_cells)
 
-    # for c in range(n_cells):
-    #     lagmax = np.zeros(16) * np.nan
-    #     for l in range(16):
-    #         lagmax[l] = np.nanmax(sta[c,l,:,:])
-    #     best_lags[c] = np.nanargmax(lagmax)
+    n_cells = np.size(norm_spikes, 0)
 
-    # del sta
-    # gc.collect()
+    # find best lag so there is only one STA per cell to deal with
+    best_sta = np.zeros([
+        n_cells,
+        np.size(sta,2),
+        np.size(sta,3)
+    ])
+    best_lags = np.zeros(n_cells)
 
-    # n_chunks = 10
-    # chunk_size = np.size()
+    for c in range(n_cells):
+        lagmax = np.zeros(16) * np.nan
+        for l in range(16):
+            lagmax[l] = np.nanmax(sta[c,l,:,:])
+        best_lags[c] = np.nanargmax(lagmax)
 
+    del sta
+    gc.collect()
 
-    # compute_calcium_sta_spatial(
-    #     stimulus=
-    #     spikes=
-    #     sti_times=
-    #     spike_times
-    # )
+    n_chunks = 20
+    split_frac = 0.5
+
+    n_samps = np.size(stimulus, 0)
+    chunk_size = n_samps // n_chunks
+    all_inds = np.arange(0, n_samps)
+    chunk_order = np.arange(n_chunks)
+    np.random.shuffle(chunk_order)
+    split_bound = int(n_chunks * split_frac)
+
+    inds_a = []
+    inds_b = []
+    for cnk_i, cnk in enumerate(chunk_order):
+        _inds = all_inds[(chunk_size*cnk) : ((chunk_size*(cnk+1)))]
+        if cnk_i < split_bound:
+            inds_a.extend(_inds)
+        elif cnk_i >= split_bound:
+            inds_b.extend(_inds)
+    inds_a = np.sort(np.array(inds_a)).astype(int)
+    inds_b = np.sort(np.array(inds_b)).astype(int)
+
+    stim_a = stimulus[inds_a,:,:]
+    stim_b = stimulus[inds_b,:,:]
+
+    spikes_a = norm_spikes[:,inds_a]
+    spikes_b = norm_spikes[:,inds_b]
+
+    spikeT_a = 
+
+    stimT_a = 
+
+    
+
+    compute_calcium_sta_spatial(
+        stimulus=
+        spikes=
+        stim_times=
+        spike_times=
+    )
 
     
 
