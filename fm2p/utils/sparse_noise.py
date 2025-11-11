@@ -28,14 +28,14 @@ def find_delay_frames(stim_s, pop_s, max_lag=80):
 
 
 def compute_calcium_sta_spatial(
-    stimulus,
-    spikes,
-    stim_times,
-    spike_times,
-    window=20,
-    auto_delay=True,
-    max_lag_frames=80,
-):
+        stimulus,
+        spikes,
+        stim_times,
+        spike_times,
+        window=20,
+        auto_delay=True,
+        max_lag_frames=80
+    ):
     
     stimulus = np.asarray(stimulus)
     spikes = np.asarray(spikes)
@@ -112,7 +112,7 @@ def compute_calcium_sta_spatial(
             if rate <= 0 or i < window or i + window + 1 >= n_stim:
                 continue
 
-            stim_segment = flat_signed[i - window : i+1 ]
+            stim_segment = flat_signed[i - window : i+1]
  
             sta += rate * stim_segment
             total_rate += rate
@@ -125,49 +125,27 @@ def compute_calcium_sta_spatial(
     return sta_all, lag_axis, est_delay_frames
 
 
-def calc_sparse_noise_STAs(preproc_path, stimpath=None):
-
-    if stimpath is None:
-        stimpath = r'T:\dylan\sparse_noise_sequence_v7.npy'
-    stimulus = np.load(stimpath)[:,:,:,0]
-
-    data = fm2p.read_h5(preproc_path)
-
-    norm_spikes = data['s2p_spks']
-    stimT = data['stimT']
-    stimT = stimT - stimT[0]
-    twopT = data['twopT']
-
-    if stimulus.max() <= 1.0:
-        stimulus = stimulus * 255.0
-
-    # calculate the STAs
-    sta_all, lag_axis, delay = compute_calcium_sta_spatial(
+def compute_sta_chunked_reliability(
         stimulus,
-        norm_spikes,
-        stimT,
-        twopT,
-        window=15,
-        auto_delay=False
-    )
+        spikes,
+        stim_times,
+        spike_times,
+        full_sta,
+        thresh=None
+    ):
 
-    n_cells = np.size(norm_spikes, 0)
+    n_cells = np.size(spikes, 0)
 
-    # find best lag so there is only one STA per cell to deal with
-    best_sta = np.zeros([
-        n_cells,
-        np.size(sta,2),
-        np.size(sta,3)
-    ])
+    # find best STA lag so there is only one STA per cell to deal with
     best_lags = np.zeros(n_cells)
 
     for c in range(n_cells):
         lagmax = np.zeros(16) * np.nan
         for l in range(16):
-            lagmax[l] = np.nanmax(sta[c,l,:,:])
+            lagmax[l] = np.nanmax(full_sta[c,l,:,:])
         best_lags[c] = np.nanargmax(lagmax)
 
-    del sta
+    del full_sta
     gc.collect()
 
     n_chunks = 20
@@ -190,25 +168,86 @@ def calc_sparse_noise_STAs(preproc_path, stimpath=None):
             inds_b.extend(_inds)
     inds_a = np.sort(np.array(inds_a)).astype(int)
     inds_b = np.sort(np.array(inds_b)).astype(int)
-
-    stim_a = stimulus[inds_a,:,:]
-    stim_b = stimulus[inds_b,:,:]
-
-    spikes_a = norm_spikes[:,inds_a]
-    spikes_b = norm_spikes[:,inds_b]
-
-    spikeT_a = 
-
-    stimT_a = 
-
     
-
-    compute_calcium_sta_spatial(
-        stimulus=
-        spikes=
-        stim_times=
-        spike_times=
-    )
-
+    stimulus = np.asarray(stimulus)
+    spikes = np.asarray(spikes)
+    stim_times = np.asarray(stim_times)
+    spike_times = np.asarray(spike_times)
     
+    # trim off extra frames at end of 2P data
+    stimend = np.size(stimulus,0)/2
+    spikeend, _ = fm2p.find_closest_timestamp(spike_times, stimend)
+    spikes = spikes[:,:spikeend]
+    spike_times = spike_times[:spikeend]
 
+    nFrames, stimY, stimX = np.shape(stimulus)
+
+    bg_est = np.median(stimulus)
+    white_mask = (stimulus > bg_est)
+    black_mask = (stimulus < bg_est)
+    signed_stim = (white_mask.astype(np.int16) - black_mask.astype(np.int16))
+
+    flat_signed = np.reshape(signed_stim, [nFrames, stimY*stimX])
+    flat_signed = flat_signed - np.mean(flat_signed, axis=0, keepdims=True)
+
+    n_stim, n_features = flat_signed.shape
+    n_cells, n_spike_samples = spikes.shape
+
+    if n_spike_samples != len(spike_times):
+        raise ValueError(f"spikes.shape[1] ({n_spike_samples}) != len(spike_times) ({len(spike_times)})")
+
+    sta_all_a = np.zeros((n_cells, 1, n_features))
+    sta_all_b = np.zeros((n_cells, 1, n_features))
+    eps = 1e-9
+
+    for cell_idx in tqdm(range(n_cells)):
+        cell_spikes = spikes[cell_idx,:]
+
+        interp_fn = interp1d(
+            spike_times,
+            cell_spikes,
+            kind="linear",
+            fill_value="extrapolate",
+            assume_sorted=True
+        )
+        spike_rate_per_frame = interp_fn(stim_times)
+
+        sta_a = np.zeros((1, n_features))
+        sta_b = np.zeros((1, n_features))
+        total_rate_a = 0.
+        total_rate_b = 0.
+
+        # block a
+        for i, rate in enumerate(spike_rate_per_frame):
+            if rate <= 0 or i < 1 or i + 1 + 1 >= n_stim:
+                continue
+
+            if i in inds_a:
+                stim_segment = flat_signed[i-1 : i+1]
+                sta_a += rate * stim_segment
+                total_rate_a += rate
+                
+            if i in inds_b:
+                stim_segment = flat_signed[i-1 : i+1]
+                sta_b += rate * stim_segment
+                total_rate_b += rate
+
+        sta_a /= (total_rate_a + eps)
+        sta_all_a[cell_idx] = sta_a
+
+        sta_b /= (total_rate_b + eps)
+        sta_all_b[cell_idx] = sta_b
+
+    # correlation between the two STAs
+    split_correlations = np.zeros(n_cells) * np.nan
+    for c in range(n_cells):
+        split_correlations[c] = fm2p.corr2_coeff(
+            sta_all_a[c,:,:].flatten(),
+            sta_all_b[c,:,:].flatten()
+        )
+
+    if thresh is not None:
+        responsive = split_correlations > thresh
+        return sta_all_a, sta_all_b, split_correlations, responsive
+
+    return sta_all_a, sta_all_b, split_correlations

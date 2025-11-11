@@ -285,7 +285,7 @@ from .utils.PETH import (
 from .utils.sparse_noise import (
     compute_calcium_sta_spatial,
     find_delay_frames,
-    calc_sparse_noise_STAs
+    compute_sta_chunked_reliability
 )
 
 from .split_suite2p import (
@@ -300,7 +300,10 @@ from .polar_revcorr import (
     smooth_2d_rate_maps
 )
 
-from .sparse_noise_mapping import sparse_noise_mapping
+from .sparse_noise_mapping import (
+    sparse_noise_mapping,
+    calc_sparse_noise_STAs,
+    calc_sparse_noise_STA_reliability
+)
 from .summarize_session import summarize_session
-
 from .revcorr2 import revcorr2
