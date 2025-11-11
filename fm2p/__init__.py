@@ -302,3 +302,5 @@ from .polar_revcorr import (
 
 from .sparse_noise_mapping import sparse_noise_mapping
 from .summarize_session import summarize_session
+
+from .revcorr2 import revcorr2

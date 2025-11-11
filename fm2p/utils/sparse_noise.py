@@ -5,6 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 from scipy.interpolate import interp1d
 from scipy.signal import correlate
+import gc
 
 import fm2p
 import imgtools
@@ -32,7 +33,6 @@ def compute_calcium_sta_spatial(
     stim_times,
     spike_times,
     window=20,
-    separate_light_dark=True,
     auto_delay=True,
     max_lag_frames=80,
 ):
@@ -140,6 +140,7 @@ def calc_sparse_noise_STAs(preproc_path, stimpath=None):
     if stimulus.max() <= 1.0:
         stimulus = stimulus * 255.0
 
+    # calculate the STAs
     sta_all, lag_axis, delay = compute_calcium_sta_spatial(
         stimulus,
         norm_spikes,
@@ -148,5 +149,33 @@ def calc_sparse_noise_STAs(preproc_path, stimpath=None):
         window=15,
         auto_delay=False
     )
+    # # find best lag so there is only one STA per cell to deal with
+    # best_sta = np.zeros([
+    #     n_cells,
+    #     np.size(sta,2),
+    #     np.size(sta,3)
+    # ])
+    # best_lags = np.zeros(n_cells)
 
-    return sta_all
+    # for c in range(n_cells):
+    #     lagmax = np.zeros(16) * np.nan
+    #     for l in range(16):
+    #         lagmax[l] = np.nanmax(sta[c,l,:,:])
+    #     best_lags[c] = np.nanargmax(lagmax)
+
+    # del sta
+    # gc.collect()
+
+    # n_chunks = 10
+    # chunk_size = np.size()
+
+
+    # compute_calcium_sta_spatial(
+    #     stimulus=
+    #     spikes=
+    #     sti_times=
+    #     spike_times
+    # )
+
+    
+

@@ -10,18 +10,13 @@ ltdk: true
 hp_plug: false
 imu: true
 
-# Hippocampal recording prefixes
-hp_inter_recs: [1, 3]
-# Hippocampal home-cage recording prefixes
-hp_home_recs: [2, 4]
-
 # Preprocessing flags
 run_deinterlace : true
 run_pose_estimation: true
 run_cyclotorsion: false
 
 # Two-photon
-twop_rate: 7.49 # Hz
+twop_rate: 7.52 # Hz
 cell_sd_thresh: 2
 
 # General options
