@@ -1,10 +1,12 @@
 
 
 import os
+from scipy import io
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+import imgtools
 import fm2p
 
 plt.rcParams.update({'font.size': 6})
@@ -25,9 +27,17 @@ def summarize_session(preproc_path):
 
     fig, axs = plt.subplots(5, 4, figsize=(8.5, 11.), dpi=300)
 
-    axs[0,0].imshow(data['twop_mean_img'], cmap='gray')
+    try:
+        axs[0,0].imshow(data['twop_mean_img'], cmap='gray')
+    except:
+        mat = io.loadmat(fm2p.find('*registered_data.mat', os.path.split(preproc_path)[0], MR=True))
+        proj_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='avg_projection')[0])
+        proj = mat['data'].item()[proj_ind].copy()
+        axs[0,0].imshow(proj, cmap='gray')
+
     axs[0,0].set_title('{} cells'.format(np.size(data['norm_spikes'], 0)),fontsize=6)
     axs[0,0].axis('off')
+
 
     vars = ['head_yaw_deg', 'pitch_twop_interp','roll_twop_interp']
     is_running = np.append(np.array(data['speed']>2.), np.array(False))
@@ -166,9 +176,14 @@ def summarize_session(preproc_path):
         )
         axs[2,i+2].legend(frameon=False, fontsize=6)
 
-        axs[4,i+2].plot((data['twopT']/60)[data['ltdk_state_vec']], var_trim[data['ltdk_state_vec']], color='tab:orange', lw=1, label='light')
-        axs[4,i+2].plot((data['twopT']/60)[~data['ltdk_state_vec']], var_trim[~data['ltdk_state_vec']], color='navy', lw=1, label='dark')
-        axs[4,i+2].legend(frameon=False)
+        try:
+            axs[4,i+2].plot((data['twopT']/60)[data['ltdk_state_vec']], var_trim[data['ltdk_state_vec']], color='tab:orange', lw=1, label='light')
+            axs[4,i+2].plot((data['twopT']/60)[~data['ltdk_state_vec']], var_trim[~data['ltdk_state_vec']], color='navy', lw=1, label='dark')
+            axs[4,i+2].legend(frameon=False)
+        except:
+            axs[4,i+2].plot((data['twopT']/60), var_trim, color='tab:orange', lw=1, label='light')
+            axs[4,i+2].legend(frameon=False)
+
         axs[4,i+2].set_ylabel('{} (deg)'.format(var))
         axs[4,i+2].set_xlabel('time (min)')
 

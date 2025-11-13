@@ -253,24 +253,38 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
     return dFF_out, denoised_dFF, sps, kept_groups
 
 
-def get_independent_axons(cfg, s2p_dict, merge_duplicates=True, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False):
-
-    twop_data = fm2p.TwoP(cfg)
-    twop_data.add_data(
-        s2p_dict['F'],
-        s2p_dict['Fneu'],
-        s2p_dict['spks'],
-        s2p_dict['iscell'],
-    )
-    twop_dict_out = twop_data.calc_dFF()
-    dFF = twop_dict_out['raw_dFF']
+def get_independent_axons(cfg, s2p_dict=None, matpath=None, merge_duplicates=True, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False):
 
     fps = cfg['twop_rate']
 
-    frame_means = twop_data.calc_frame_mean_across_time(
-        s2p_dict['ops_path'],
-        s2p_dict['bin_path']
-    )
+    if s2p_dict is not None:
+        twop_data = fm2p.TwoP(cfg)
+        twop_data.add_data(
+            s2p_dict['F'],
+            s2p_dict['Fneu'],
+            s2p_dict['spks'],
+            s2p_dict['iscell'],
+        )
+        twop_dict_out = twop_data.calc_dFF()
+        dFF = twop_dict_out['raw_dFF']
+
+        frame_means = twop_data.calc_frame_mean_across_time(
+            s2p_dict['ops_path'],
+            s2p_dict['bin_path']
+        )
+        
+    elif matpath is not None:
+        mat = io.loadmat(matpath)
+        try:
+            dff_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='DFF')[0])
+        except IndexError as e:
+            print(e)
+            print('There are no cells in this recording. Check cell segmentation.')
+            quit()
+        dFF = mat['data'].item()[dff_ind].copy()
+
+        framef_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='frame_F')[0])
+        frame_means = mat['data'].item()[framef_ind].copy().T
 
     if not merge_duplicates:
         # For each pair of correlated axons, drop the one with the lower integrated fluorescence

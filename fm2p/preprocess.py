@@ -205,19 +205,19 @@ def preprocess(cfg_path=None, spath=None):
                 imu_vals = fm2p.find('*_IMUvals.csv', rpath, MR=True)
                 imu_timestamps = fm2p.find('*_IMUtime.csv', rpath, MR=True)
 
-        # if not axons:
+        if not axons:
         # Suite2p files
-        F_path = fm2p.find('F.npy', rpath, MR=True)
-        Fneu_path = fm2p.find('Fneu.npy', rpath, MR=True)
-        suite2p_spikes = fm2p.find('spks.npy', rpath, MR=True)
-        iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
-        stat_path = fm2p.find('stat.npy', rpath, MR=True)
-        ops_path = fm2p.find('ops.npy', rpath, MR=True)
-        if axons:
-            bin_path = fm2p.find('data.bin', rpath, MR=True)
+            F_path = fm2p.find('F.npy', rpath, MR=True)
+            Fneu_path = fm2p.find('Fneu.npy', rpath, MR=True)
+            suite2p_spikes = fm2p.find('spks.npy', rpath, MR=True)
+            iscell_path = fm2p.find('iscell.npy', rpath, MR=True)
+            stat_path = fm2p.find('stat.npy', rpath, MR=True)
+            ops_path = fm2p.find('ops.npy', rpath, MR=True)
+        # if axons:
+        #     bin_path = fm2p.find('data.bin', rpath, MR=True)
 
-        # elif axons:
-        #     F_axons_path = fm2p.find('*_registered_data.mat', rpath, MR=True)
+        elif axons:
+            F_axons_path = fm2p.find('*_registered_data.mat', rpath, MR=True)
 
 
         if cfg['run_deinterlace'] and not sn:
@@ -290,28 +290,28 @@ def preprocess(cfg_path=None, spath=None):
 
         print('  -> Reading fluorescence data.')
 
-        # if not axons:
-            # Read suite2p data
-        F = np.load(F_path, allow_pickle=True)
-        Fneu = np.load(Fneu_path, allow_pickle=True)
-        spks = np.load(suite2p_spikes, allow_pickle=True)
-        stat = np.load(stat_path, allow_pickle=True)
-        ops =  np.load(ops_path, allow_pickle=True)
-        iscell = np.load(iscell_path, allow_pickle=True)
+        if not axons:
+                # Read suite2p data
+            F = np.load(F_path, allow_pickle=True)
+            Fneu = np.load(Fneu_path, allow_pickle=True)
+            spks = np.load(suite2p_spikes, allow_pickle=True)
+            stat = np.load(stat_path, allow_pickle=True)
+            ops =  np.load(ops_path, allow_pickle=True)
+            iscell = np.load(iscell_path, allow_pickle=True)
 
         if axons:
             
-            s2p_dict = {
-                'F': F,
-                'Fneu': Fneu,
-                'spks': spks,
-                'stat': stat,
-                'ops': ops,
-                'iscell': iscell,
-                'ops_path': ops_path,
-                'bin_path': bin_path
-            }
-            dFF_out, denoised_dFF, sps, kept_groups = fm2p.get_independent_axons(cfg, s2p_dict, merge_duplicates=True)
+            # s2p_dict = {
+            #     'F': F,
+            #     'Fneu': Fneu,
+            #     'spks': spks,
+            #     'stat': stat,
+            #     'ops': ops,
+            #     'iscell': iscell,
+            #     'ops_path': ops_path,
+            #     'bin_path': bin_path
+            # }
+            dFF_out, denoised_dFF, sps, kept_groups = fm2p.get_independent_axons(cfg, matpath=F_axons_path, merge_duplicates=True)
 
 
         if sn:
@@ -338,11 +338,12 @@ def preprocess(cfg_path=None, spath=None):
 
             arena_yaml_path = os.path.join(rpath, 'arena_props.yaml')
             # if os.path.isfile(arena_yaml_path):
-            #     arena_dict = fm2p.read_yaml(arena_yaml_path)
-            # else:
-            arena_dict = top_cam.track_arena()
-            arena_dict = fm2p.fix_dict_dtype(arena_dict, float)
-            fm2p.write_yaml(arena_yaml_path, arena_dict)
+            try:
+                arena_dict = fm2p.read_yaml(arena_yaml_path)
+            except:
+                arena_dict = top_cam.track_arena()
+                arena_dict = fm2p.fix_dict_dtype(arena_dict, float)
+                fm2p.write_yaml(arena_yaml_path, arena_dict)
 
             pxls2cm = arena_dict['pxls2cm']
             top_xyl, top_tracking_dict = top_cam.track_body(pxls2cm)
@@ -387,51 +388,51 @@ def preprocess(cfg_path=None, spath=None):
         print('  -> Running spike inference.')
 
         # Load processed two photon data from suite2p
-        # if not axons:
-        twop_recording = fm2p.TwoP(rpath, full_rname, cfg=cfg)
-        twop_recording.add_data(
-            F=F,
-            Fneu=Fneu,
-            spikes=spks,
-            iscell=iscell
-        )
-        twop_dict = twop_recording.calc_dFF(neu_correction=0.7, use_oasis=True)
-        dFF_transients = twop_recording.calc_dFF_transients()
-        # Set a maximum spike rate for each cell, then normalize spikes
-        normspikes = twop_recording.normalize_spikes()
-        recording_props = twop_recording.get_recording_props(
-            stat=stat,
-            ops=ops
-        )
+        if not axons:
+            twop_recording = fm2p.TwoP(rpath, full_rname, cfg=cfg)
+            twop_recording.add_data(
+                F=F,
+                Fneu=Fneu,
+                spikes=spks,
+                iscell=iscell
+            )
+            twop_dict = twop_recording.calc_dFF(neu_correction=0.7, use_oasis=True)
+            dFF_transients = twop_recording.calc_dFF_transients()
+            # Set a maximum spike rate for each cell, then normalize spikes
+            normspikes = twop_recording.normalize_spikes()
+            recording_props = twop_recording.get_recording_props(
+                stat=stat,
+                ops=ops
+            )
 
-        # twop_dt = 1./cfg['twop_rate']
-        # twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
-        twopT = fm2p.read_scanimage_time(twop_tiff_path)
+            # twop_dt = 1./cfg['twop_rate']
+            # twopT = np.arange(0, np.size(twop_dict['s2p_spks'], 1)*twop_dt, twop_dt)
+            twopT = fm2p.read_scanimage_time(twop_tiff_path)
 
-        twop_dict['twopT'] = twopT
-        twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
-        twop_dict['norm_spikes'] = normspikes
-        twop_dict['dFF_transients'] = dFF_transients
+            twop_dict['twopT'] = twopT
+            twop_dict['matlab_cellinds'] = np.arange(np.size(twop_dict['raw_F'],0))
+            twop_dict['norm_spikes'] = normspikes
+            twop_dict['dFF_transients'] = dFF_transients
 
-        twop_dict = {**twop_dict, **recording_props}
+            twop_dict = {**twop_dict, **recording_props}
 
-        # elif axons:
-        #     twop_dict = {}
+        elif axons:
+            twop_dict = {}
             
-        #     twop_dt = 1./cfg['twop_rate']
-        #     twopT = np.arange(0, np.size(sps, 1)*twop_dt, twop_dt)
-        #     twop_dict['twopT'] = twopT
+            twop_dt = 1./cfg['twop_rate']
+            twopT = np.arange(0, np.size(sps, 1)*twop_dt, twop_dt)
+            twop_dict['twopT'] = twopT
 
-        #     twop_dict['raw_F0'] = np.zeros(np.size(dFF_out,0))
-        #     twop_dict['raw_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
-        #     twop_dict['norm_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
-        #     twop_dict['raw_Fneu'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
-        #     twop_dict['raw_dFF'] = dFF_out
-        #     twop_dict['norm_dFF'] = np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
-        #     twop_dict['denoised_dFF'] = denoised_dFF
-        #     twop_dict['s2p_spks'] = sps
-        #     twop_dict['matlab_cellinds'] = kept_groups
-        #     twop_dict['norm_spikes'] = fm2p.normalize_axonal_spikes(sps, cfg)
+            twop_dict['raw_F0'] = np.zeros(np.size(dFF_out,0))
+            twop_dict['raw_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['norm_F'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['raw_Fneu'] =  np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['raw_dFF'] = dFF_out
+            twop_dict['norm_dFF'] = np.zeros([np.size(dFF_out,0), np.size(dFF_out,1)])
+            twop_dict['denoised_dFF'] = denoised_dFF
+            twop_dict['s2p_spks'] = sps
+            twop_dict['matlab_cellinds'] = kept_groups
+            twop_dict['norm_spikes'] = fm2p.normalize_axonal_spikes(sps, cfg)
 
 
         if not sn:
@@ -611,5 +612,5 @@ def preprocess(cfg_path=None, spath=None):
 
 if __name__ == '__main__':
 
-    preprocess(r'K:\Mini2P_V1PPC\251029_DMM_DMM061_pos03\config.yaml')
+    preprocess()
 
