@@ -33,7 +33,7 @@ def compute_calcium_sta_spatial(
         stim_times,
         spike_times,
         window=20,
-        auto_delay=True,
+        delay=None,
         max_lag_frames=80
     ):
     
@@ -78,17 +78,15 @@ def compute_calcium_sta_spatial(
     pop_rate_per_frame = pop_sum / counts
 
     est_delay_frames = 0
-    if auto_delay:
+    if delay is None:
         est_delay_frames = find_delay_frames(
             stim_mean_trace,
             pop_rate_per_frame,
             max_lag=max_lag_frames
         )
-        delay = est_delay_frames * np.median(np.diff(stim_times))
+        delay_ = est_delay_frames * np.median(np.diff(stim_times))
 
-        stim_times_shifted = stim_times + (delay if delay is not None else 0.0)
-    else:
-        stim_times_shifted = stim_times
+        stim_times_shifted = stim_times + delay_
 
     sta_all = np.zeros((n_cells, window + 1, n_features))
     eps = 1e-9
@@ -103,6 +101,10 @@ def compute_calcium_sta_spatial(
             fill_value="extrapolate",
             assume_sorted=True
         )
+
+        if delay is not None:
+            stim_times_shifted = stim_times.copy() + (delay[cell_idx] * np.median(np.diff(stim_times)))
+
         spike_rate_per_frame = interp_fn(stim_times_shifted)
 
         sta = np.zeros((window + 1, n_features))
@@ -123,6 +125,67 @@ def compute_calcium_sta_spatial(
     lag_axis = np.arange(-window, window + 1)
 
     return sta_all, lag_axis, est_delay_frames
+
+
+def compute_split_STAs(
+        stimulus,
+        spikes,
+        stim_times,
+        spike_times,
+        best_lags
+    ):
+
+    print('  -> Splitting response data into two halves.')
+    splitind = np.size(stimulus,0) // 2
+    print('  -> Using {} as split index. Total length is {}.'.format(splitind, np.size(stimulus,0)))
+    n_cells = np.size(spikes, 0)
+
+    splittime = stim_times[splitind]
+    splitind_spikes, splittime_spikes = fm2p.find_closest_timestamp(spike_times, splittime)
+
+    stim_times1 = stim_times[:splitind]
+    stim_times1 = stim_times1 - stim_times1[0]
+    stim_times2 = stim_times[splitind:]
+    stim_times2 = stim_times2 - stim_times2[0]
+
+    spike_times1 = spike_times[:splitind_spikes]
+    spike_times1 = spike_times1 - spike_times1[0]
+    spike_times2 = spike_times[splitind_spikes:]
+    spike_times2 = spike_times2 - spike_times2[0]
+
+    # dt = np.median(np.diff(stim_times))
+    # best_lags = np.asarray(best_lags)
+    # per_cell_delay_sec = best_lags * dt
+
+    print('  -> Calculating STAs for first chunk of data.')
+    STA1, _, _ = compute_calcium_sta_spatial(
+        stimulus[:splitind],
+        spikes[:,:splitind_spikes],
+        stim_times1,
+        spike_times1,
+        window=0,
+        delay=best_lags # try +1 since lag 0 was never tested
+    )
+
+    print('  -> Calculating STAs for second chunk of data.')
+    STA2, _, _ = compute_calcium_sta_spatial(
+        stimulus[splitind:],
+        spikes[:,splitind_spikes:],
+        stim_times2,
+        spike_times2,
+        window=0,
+        delay=best_lags
+    )
+
+    print('  -> Checking correlation between first/second chunks.')
+    split_correlations = np.zeros(n_cells) * np.nan
+    for cell_idx in range(n_cells):
+        split_correlations[cell_idx] = fm2p.corr2_coeff(
+            STA1[cell_idx,:,:],
+            STA2[cell_idx,:,:]
+        )
+
+    return STA1, STA2, split_correlations
 
 
 def compute_sta_chunked_reliability(

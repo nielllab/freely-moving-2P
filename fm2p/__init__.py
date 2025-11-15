@@ -285,7 +285,8 @@ from .utils.PETH import (
 from .utils.sparse_noise import (
     compute_calcium_sta_spatial,
     find_delay_frames,
-    compute_sta_chunked_reliability
+    compute_sta_chunked_reliability,
+    compute_split_STAs
 )
 
 from .split_suite2p import (
