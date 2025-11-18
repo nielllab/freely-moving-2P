@@ -11,6 +11,43 @@ warnings.filterwarnings('ignore')
 import fm2p
 
 
+def plot_polar_retino(map_, angle_edges, dist_edges, ax=None, fov_edge=110):
+
+    parula_map = fm2p.make_parula()
+
+    if ax is None:
+        fig, ax = plt.subplots(1,1,figsize=(4,4),dpi=300,subplot_kw={'projection': 'polar'})
+
+    rate_mesh_X, rate_mesh_Y = np.meshgrid(np.deg2rad(angle_edges), dist_edges)
+    mask = np.logical_and(rate_mesh_X < np.deg2rad(360-fov_edge), rate_mesh_X > np.deg2rad(fov_edge))[:-1,:-1]
+
+    # Z = np.roll(data['smoothed_rate_maps'][6,:,:].copy().T, shift=int(90/3), axis=1)
+    Z1 = map_.T
+    Z1[mask] = np.nan
+    Z2 = map_.T
+    Z2[~mask] = np.nan
+
+    ax.pcolormesh(
+        # (np.pi*2) - rate_mesh_X, # for egocentric
+        rate_mesh_X,
+        rate_mesh_Y,
+        Z1,
+        edgecolors='face', cmap=parula_map, shading='flat'
+    )
+    ax.pcolormesh(
+        # (np.pi*2) - rate_mesh_X, # for egocentric
+        rate_mesh_X,
+        rate_mesh_Y,
+        Z2,
+        edgecolors='face', cmap=parula_map, shading='flat',
+        alpha=0.2
+    )
+    ax.axis('off')
+    ax.set_theta_zero_location('N') # Sets 0 degrees to the top
+    ax.set_theta_direction(-1) # make it clockwise
+    fig.tight_layout()
+    
+
 def polar_histogram2d(theta, r, spikes, r_bins=13, r_max=26, theta_width=3):
 
     theta_width = np.deg2rad(theta_width)
