@@ -81,7 +81,8 @@ from .utils.files import (
 from .utils.filter import (
     convfilt,
     sub2ind,
-    nanmedfilt
+    nanmedfilt,
+    convolve2d
 )
 
 from .utils.topcam import Topcam
@@ -285,7 +286,8 @@ from .utils.PETH import (
 from .utils.sparse_noise import (
     compute_calcium_sta_spatial,
     find_delay_frames,
-    compute_sta_chunked_reliability
+    # compute_sta_chunked_reliability,
+    compute_split_STAs
 )
 
 from .split_suite2p import (
@@ -306,4 +308,4 @@ from .sparse_noise_mapping import (
     calc_sparse_noise_STA_reliability
 )
 from .summarize_session import summarize_session
-from .revcorr2 import revcorr2
+from .eyehead_revcorr import revcorr2

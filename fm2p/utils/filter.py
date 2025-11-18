@@ -183,3 +183,32 @@ def nanmedfilt(A, sz=5):
 
     return M
 
+
+def convolve2d(image, kernel):
+    """ Apply a 2D convolution filter to an image using zero-padding.
+    kernel needs to be a 2D numpy array e.g., np.ones([25,25])
+    """
+    kernel = np.flipud(np.fliplr(kernel))
+    
+    kH, kW = kernel.shape
+    pad_h = kH // 2
+    pad_w = kW // 2
+
+    # ff RGB process each channel independently
+    if image.ndim == 3:
+        output = np.zeros_like(image)
+        for c in range(image.shape[2]):
+            output[..., c] = convolve2d(image[..., c], kernel)
+        return output
+
+    padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='constant')
+    H, W = image.shape
+
+    result = np.zeros_like(image, dtype=float)
+
+    for i in range(H):
+        for j in range(W):
+            region = padded[i:i+kH, j:j+kW]
+            result[i, j] = np.sum(region * kernel)
+
+    return result

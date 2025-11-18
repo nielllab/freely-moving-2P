@@ -218,6 +218,11 @@ def calc_eye_head_movement_times(data):
     dEye  = np.diff(fm2p.interp_short_gaps(theta_full, 5)) / np.diff(eyeT)
     dEye = np.roll(dEye, -2) # static offset correction
 
+    # also calculate dPhi
+    phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
+    dPhi  = np.diff(fm2p.interp_short_gaps(phi_full, 5)) / np.diff(eyeT)
+    dPhi = np.roll(dPhi, -2)
+
     dGaze = dHead + dEye
 
     shifted_head = 60
@@ -259,10 +264,11 @@ def calc_eye_head_movement_times(data):
         'gaze_right': gaze_right,
         'comp_left': comp_left,
         'comp_right': comp_right,
-        'dEye': dEye,
+        'dTheta': dEye,
         'dHead': dHead,
         'dGaze': dGaze,
-        'eyeT1': t1
+        'eyeT1': t1,
+        'dPhi': dPhi
     }
 
     return saccade_dict
