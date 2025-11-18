@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import gc
 
+
 def calc_sparse_noise_STAs(preproc_path=None, stimpath=None):
 
     if preproc_path is None:
@@ -28,7 +29,6 @@ def calc_sparse_noise_STAs(preproc_path=None, stimpath=None):
 
     n_cells = np.size(norm_spikes, 0)
 
-    # calculate the STAs
     sta_all, lag_axis, delay = fm2p.compute_calcium_sta_spatial(
         stimulus,
         norm_spikes,
@@ -74,14 +74,6 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
         stimulus = stimulus * 255.0
 
     n_cells = np.size(spikes, 0)
-    # STAs = fm2p.read_h5(sta_path)['STAs']
-
-    # best_lags = np.zeros(n_cells)
-    # for c in range(n_cells):
-    #     lagmax = np.zeros(np.size(STAs, 1)) * np.nan
-    #     for l in range(np.size(STAs, 1)):
-    #         lagmax[l] = np.nanmax(np.abs(STAs[c,l,:]))
-    #     best_lags[c] = np.nanargmax(lagmax)
 
     STA, STA1, STA2, r, lags = fm2p.compute_split_STAs(
         stimulus,

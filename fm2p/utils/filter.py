@@ -186,7 +186,6 @@ def nanmedfilt(A, sz=5):
 
 def convolve2d(image, kernel):
     """ Apply a 2D convolution filter to an image using zero-padding.
-
     kernel needs to be a 2D numpy array e.g., np.ones([25,25])
     """
     kernel = np.flipud(np.fliplr(kernel))

@@ -166,15 +166,9 @@ def compute_split_STAs(
     stim_times = np.asarray(stim_times)
     spike_times = np.asarray(spike_times)
 
-    nCells  = spikes.shape[0]
+    n_cells  = spikes.shape[0]
 
-    # split point
     spike_split_ind = np.size(spike_times) // 2
-    # first_split_end = (np.size(spike_times) // 4) * 3
-    # second_split_start = (np.size(spike_times) // 4)
-    # instead of dropping both stimulus and spike data, keep it simpler and
-    # zero-out the spikes during each half of the stimulus so that only half
-    # of the stimulus contributes to the STA
     spikes1 = spikes.copy()
     spikes2 = spikes.copy()
     spikes1[:, :spike_split_ind] = 0.
@@ -187,7 +181,7 @@ def compute_split_STAs(
         stim_times,
         spike_times,
         window=window,
-        delay=[0,0]
+        delay=np.zeros(n_cells)
     )
     STA, best_lags = keep_best_STA_lag(STA_)
 
@@ -198,7 +192,7 @@ def compute_split_STAs(
         stim_times,
         spike_times,
         window=window,
-        delay=[0,0]
+        delay=np.zeros(n_cells)
     )
     STA1, best_lags1 = keep_best_STA_lag(STA1_)
 
@@ -209,15 +203,14 @@ def compute_split_STAs(
         stim_times,
         spike_times,
         window=window,
-        delay=[0,0]
+        delay=np.zeros(n_cells)
     )
     STA2, best_lags2 = keep_best_STA_lag(STA2_)
 
-    # correlation across halves
     print('  -> Checking 2D correlation between two halves.')
-    split_corr = np.zeros(nCells)
+    split_corr = np.zeros(n_cells)
 
-    for c in range(nCells):
+    for c in range(n_cells):
         A = fm2p.convolve2d(STA1[c].reshape(768,1360), np.ones([50,50]))
         B = fm2p.convolve2d(STA2[c].reshape(768,1360), np.ones([50,50]))
         A[(A < np.nanpercentile(np.abs(A),98)) & (A > -np.nanpercentile(np.abs(A),2))] = 1e-9
