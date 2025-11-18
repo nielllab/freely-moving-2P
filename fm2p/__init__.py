@@ -308,4 +308,4 @@ from .sparse_noise_mapping import (
     calc_sparse_noise_STA_reliability
 )
 from .summarize_session import summarize_session
-from .revcorr2 import revcorr2
+from .eyehead_revcorr import revcorr2
