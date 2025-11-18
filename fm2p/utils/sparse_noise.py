@@ -159,6 +159,8 @@ def compute_split_STAs(
         delay=None
     ):
 
+    print('  -> Setting up spike splits.')
+
     stimulus = np.asarray(stimulus)
     spikes = np.asarray(spikes)
     stim_times = np.asarray(stim_times)
