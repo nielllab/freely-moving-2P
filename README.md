@@ -48,3 +48,8 @@ There is noise in the tif stack which is likely from the resonance scanner. This
 Use the Goard lab two-photon calcium post processing pipeline repository [here](https://github.com/ucsb-goard-lab/Two-photon-calcium-post-processing), which I run with Matlab 2023b. Run the function `A_ProcessTimeSeries.m` without image registration. Then, run `B_DefineROI.m`, perform "Activity Map" segmentation with default values except for the "minimum pixel size" which should be changed to 5. Next, run `C_ExtractDFF.m` choosing "Local Neuropil Subtraction" and choosing "Yes" to "Weight subtraction to minimize signal-noise correlation?"
 
 **3. Create the config file.**
+
+
+
+
+to create yaml file: `conda env export --from-history > environment.yml`

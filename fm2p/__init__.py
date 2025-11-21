@@ -290,6 +290,10 @@ from .utils.sparse_noise import (
     compute_split_STAs
 )
 
+from .utils.multiprocessing_helpers import (
+    init_worker
+)
+
 from .split_suite2p import (
     split_suite2p,
     split_suite2p_npy,

@@ -59,7 +59,7 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
         )
 
     if stimpath is None:
-        stimpath = r'T:\dylan\sparse_noise_sequence_v7.npy'
+        stimpath = r'T:\goard_lab\sparse_noise_stimuli\sparse_noise_sequence_v7.npy'
 
     print('  -> Loading preprocessed data.')
     data = fm2p.read_h5(preproc_path)

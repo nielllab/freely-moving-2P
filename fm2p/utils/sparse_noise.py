@@ -8,7 +8,6 @@ from scipy.signal import correlate
 import gc
 
 import fm2p
-import imgtools
 
 
 def find_delay_frames(stim_s, pop_s, max_lag=80):
@@ -219,4 +218,6 @@ def compute_split_STAs(
         split_corr[c] = fm2p.corr2_coeff(A, B)
 
     return STA, STA1, STA2, split_corr, best_lags
+
+
 

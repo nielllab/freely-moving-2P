@@ -11,18 +11,8 @@ from multiprocessing import Pool, cpu_count, shared_memory
 
 import fm2p
 
-
-def init_worker(shared_specs, params):
-    """ Initialize workers, attach to shared memory buffers & stores parameter dict.
-    """
-    global _shared_arrays, _params
-    _shared_arrays = {}
-    _params = params
-
-    # attach each shared array
-    for name, (shm_name, shape, dtype) in shared_specs.items():
-        shm = shared_memory.SharedMemory(name=shm_name)
-        _shared_arrays[name] = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+_shared_arrays = {}
+_params = {}
 
 
 def worker_compute_sta(cell_idx):
@@ -127,7 +117,7 @@ def parallel_compute_sta_shared(
 
         with Pool(
             processes=n_workers,
-            initializer=init_worker,
+            initializer=fm2p.init_worker,
             initargs=(shared_specs, params)
         ) as pool:
 
@@ -189,9 +179,6 @@ def compute_STA_parallel(preproc_path=None, stimpath=None):
     skip_trim = False
     window = 13
 
-    _shared_arrays = {}
-    _params = {}
-
     if preproc_path is None:
         preproc_path = fm2p.select_file(
             'Select preprocessed HDF file.',
@@ -207,16 +194,16 @@ def compute_STA_parallel(preproc_path=None, stimpath=None):
     print('  -> Loading stimulus.')
     stimulus = np.load(stimpath)[:,:,:,0]
     spikes = data['s2p_spks']
-    stimT = data['stimT']
-    stimT = stimT - stimT[0]
-    twopT = data['twopT']
+    stim_times = data['stimT']
+    stim_times = stim_times - stim_times[0]
+    spike_times = data['twopT']
 
     if stimulus.max() <= 1.0:
         stimulus = stimulus * 255.
 
     n_cells = np.size(spikes, 0)
 
-    spike_split_ind = np.size(twopT) // 2
+    spike_split_ind = np.size(spike_times) // 2
     spikes1 = spikes.copy()
     spikes2 = spikes.copy()
     spikes1[:, :spike_split_ind] = 0.
