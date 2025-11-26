@@ -7,6 +7,10 @@ DMM, 2024-2025
 
 __version__ = "0.1"
 
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+
 from .utils.helper import (
     split_xyl,
     apply_liklihood_thresh,
@@ -286,7 +290,7 @@ from .utils.PETH import (
 from .utils.sparse_noise import (
     compute_calcium_sta_spatial,
     find_delay_frames,
-    # compute_sta_chunked_reliability,
+    jaccard_topk,
     compute_split_STAs
 )
 

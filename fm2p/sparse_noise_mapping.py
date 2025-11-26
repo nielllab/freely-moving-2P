@@ -14,7 +14,7 @@ def calc_sparse_noise_STAs(preproc_path=None, stimpath=None):
         )
 
     if stimpath is None:
-        stimpath = r'T:\goard_lab\sparse_noise_stimuli\sparse_noise_sequence_v7.npy'
+        stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
     stimulus = np.load(stimpath)[:,:,:,0]
 
     data = fm2p.read_h5(preproc_path)
@@ -59,7 +59,7 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
         )
 
     if stimpath is None:
-        stimpath = r'T:\goard_lab\sparse_noise_stimuli\sparse_noise_sequence_v7.npy'
+        stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
 
     print('  -> Loading preprocessed data.')
     data = fm2p.read_h5(preproc_path)
@@ -89,7 +89,7 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
         'STA1': STA1,
         'STA2': STA2,
         'lags': lags,
-        'corr': r
+        'jcorr': r
     }
 
     savepath = os.path.join(os.path.split(preproc_path)[0], 'sparse_noise.h5')
@@ -97,22 +97,25 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
     fm2p.write_h5(savepath, dict_out)
 
 
-def sparse_noise_mapping():
+def sparse_noise_mapping(prepath=None):
      
     parser = argparse.ArgumentParser()
-    parser.add_argument('-cr', '--check_reliability', type=fm2p.str_to_bool, default=True) ### CHANGE BACK TO DEFAULT AS FALSE
+    parser.add_argument('-cr', '--check_reliability', type=fm2p.str_to_bool, default=True)
     args = parser.parse_args()
     check_reliability = args.check_reliability
 
     if check_reliability:
         calc_sparse_noise_STA_reliability(
+            prepath
         )
 
     elif not check_reliability:
         calc_sparse_noise_STAs(
+            prepath
         )
      
 
 if __name__ == '__main__':
     
     sparse_noise_mapping()
+

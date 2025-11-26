@@ -26,6 +26,26 @@ def find_delay_frames(stim_s, pop_s, max_lag=80):
     return lag
 
 
+def jaccard_topk(sta1, sta2, pct=1.0):
+    # threshold each STA at its top x% pixels (e.g., 1% or 5%) and compute the Jaccard
+    # index (intersection / union)... test whether same pixels are strongest in both halves
+
+    # pct = percentage of pixels to keep (pos or neg largest magnitude)
+    n = sta1.size
+    k = max(1, int(np.round(n * (pct/100.0))))
+
+    idx1 = np.argpartition(np.abs(sta1.ravel()), -k)[-k:]
+    idx2 = np.argpartition(np.abs(sta2.ravel()), -k)[-k:]
+
+    s1 = set(idx1.tolist())
+    s2 = set(idx2.tolist())
+
+    inter = len(s1 & s2)
+    union = len(s1 | s2)
+
+    return inter / union if union > 0 else 0.0
+
+
 def compute_calcium_sta_spatial(
         stimulus,
         spikes,
@@ -210,12 +230,7 @@ def compute_split_STAs(
     split_corr = np.zeros(n_cells)
 
     for c in range(n_cells):
-        A = fm2p.convolve2d(STA1[c].reshape(768,1360), np.ones([50,50]))
-        B = fm2p.convolve2d(STA2[c].reshape(768,1360), np.ones([50,50]))
-        A[(A < np.nanpercentile(np.abs(A),98)) & (A > -np.nanpercentile(np.abs(A),2))] = 1e-9
-        B[(B < np.nanpercentile(np.abs(B),98)) & (B > -np.nanpercentile(np.abs(B),2))] = 1e-9
-
-        split_corr[c] = fm2p.corr2_coeff(A, B)
+        split_corr[c] = jaccard_topk(STA1[c,:], STA2[c,:])
 
     return STA, STA1, STA2, split_corr, best_lags
 
