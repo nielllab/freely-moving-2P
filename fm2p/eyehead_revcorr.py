@@ -32,13 +32,13 @@ def calc_1d_tuning(spikes, var, ltdk, bound=10, n_bins=13):
     bins = np.linspace(
         np.nanpercentile(var, bound),
         np.nanpercentile(var, 100-bound),
-        n_bins-1
+        n_bins
     )
     n_cells = np.size(spikes, 0)
 
     tuning_out = np.zeros([
         n_cells,
-        len(bins-1),
+        len(bins)-1,
         2
     ]) * np.nan
     err_out = np.zeros_like(tuning_out) * np.nan
@@ -50,7 +50,7 @@ def calc_1d_tuning(spikes, var, ltdk, bound=10, n_bins=13):
         elif state==1:
             usesamp = ltdk
 
-        usespikes = spikes[:,usesamp]
+        usespikes = fm2p.zscore_spikes(spikes[:,usesamp])
         usevar = var[usesamp]
 
         bin_edges, tuning_out[:,:,state], err_out[:,:,state] = fm2p.tuning_curve(usespikes, usevar, bins)
@@ -59,7 +59,7 @@ def calc_1d_tuning(spikes, var, ltdk, bound=10, n_bins=13):
     return bin_edges, tuning_out, err_out
 
 
-def tuning2d(x_vals, y_vals, rates, n_x=20, n_y=20):
+def tuning2d(x_vals, y_vals, rates, n_x=13, n_y=13):
 
     x_bins = np.linspace(np.nanpercentile(x_vals, 10), np.nanpercentile(x_vals, 90), num=n_x+1)
     y_bins = np.linspace(np.nanpercentile(y_vals, 10), np.nanpercentile(y_vals, 90), num=n_y+1)
@@ -112,10 +112,14 @@ def revcorr2(preproc_path=None):
     dPhi = fm2p.interpT(dPhi, data['eyeT1'], data['twopT'])
 
     spikes = data['norm_spikes'].copy()
+
     ltdk = data['ltdk_state_vec'].copy()
 
     # at some point, add in accelerations
     behavior_vars = {
+        # gaze
+        'gaze': np.cumsum(data['dGaze'].copy()),
+        'dGaze': data['dGaze'].copy(),
         # eye positions
         'theta': data['theta_interp'].copy(),
         'phi': data['phi_interp'].copy(),
@@ -123,17 +127,17 @@ def revcorr2(preproc_path=None):
         'dTheta': dTheta,
         'dPhi': dPhi,
         # head positions
-        'pitch': data['pitch_trim'].copy(),
-        'roll': data['roll_trim'].copy(),
+        'pitch': data['pitch_twop_interp'].copy(),
+        'roll': data['roll_twop_interp'].copy(),
         'yaw': data['head_yaw_deg'].copy(),
         # head angular rotation speeds
-        'gyro_x': data['gyro_x_trim'].copy(),
-        'gyro_y': data['gyro_y_trim'].copy(),
-        'gyro_z': data['gyro_z_trim'].copy(),
+        'gyro_x': data['gyro_x_twop_interp'].copy(),
+        'gyro_y': data['gyro_y_twop_interp'].copy(),
+        'gyro_z': data['gyro_z_twop_interp'].copy(),
         # head accelerations
-        'acc_x': data['acc_x_trim'].copy(),
-        'acc_y': data['acc_y_trim'].copy(),
-        'acc_z': data['acc_z_trim'].copy()
+        'acc_x': data['acc_x_twop_interp'].copy(),
+        'acc_y': data['acc_y_twop_interp'].copy(),
+        'acc_z': data['acc_z_twop_interp'].copy()
     }
 
     dict_out = {}
@@ -157,9 +161,9 @@ def revcorr2(preproc_path=None):
             behavior_vars[var2_key],
             spikes
         )
-        dict_out['{}_vs{}_xbins'.format(var1_key, var2_key)] = x
-        dict_out['{}_vs{}_ybins'.format(var1_key, var2_key)] = y
-        dict_out['{}_vs{}_heatmap'.format(var1_key, var2_key)] = H
+        dict_out['{}_vs_{}_xbins'.format(var1_key, var2_key)] = x
+        dict_out['{}_vs_{}_ybins'.format(var1_key, var2_key)] = y
+        dict_out['{}_vs_{}_heatmap'.format(var1_key, var2_key)] = H
 
     basedir, _ = os.path.split(preproc_path)
     savename = os.path.join(basedir, 'eyehead_revcorrs.h5')

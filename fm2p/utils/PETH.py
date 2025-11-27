@@ -7,7 +7,8 @@ import fm2p
 def norm_psth(mean_psth):
     psth_norm = np.zeros_like(mean_psth)*np.nan
     for c in range(np.size(mean_psth,0)):
-        x = mean_psth[c].copy()
+        x = mean_psth[c,:].copy()
+        # index into first ten so that i'm normalizing by the baseline not the responsive period
         psth_norm[c,:] = (x - np.nanmean(x[:10])) / np.nanmax(x)
     return psth_norm
 
@@ -32,15 +33,11 @@ def calc_hist_PETH(spikes, event_frames, window_bins):
         if len(valid_indices) > 0:
             psth[:, i, valid_mask] = spikes[:, valid_indices]
 
-    mean_psth = psth.mean(axis=1)  # average across events
-    stderr = np.std(psth, axis=1) / np.sqrt(np.size(psth, axis=1))
+    mean_psth = np.nanmean(psth, axis=1)  # average across events
+    stderr = np.nanstd(psth, axis=1) / np.sqrt(np.size(psth, axis=1))
 
-    norm_psths = np.zeros_like(psth) * np.nan
-    for i in range(np.size(psth, 1)):
-        norm_psths[:,i] = norm_psth(psth[:,i])
-
-    mean_psth_norm = norm_psths.mean(axis=1)
-    stderr_norm = np.std(norm_psths, axis=1) / np.sqrt(np.size(norm_psths, axis=1))
+    mean_psth_norm = norm_psth(mean_psth)
+    stderr_norm = norm_psth(stderr)
 
     return mean_psth, stderr, mean_psth_norm, stderr_norm
 
