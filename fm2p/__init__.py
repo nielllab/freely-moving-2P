@@ -90,7 +90,8 @@ from .utils.topcam import Topcam
 from .utils.twop import (
     TwoP,
     calc_inf_spikes,
-    normalize_axonal_spikes
+    normalize_axonal_spikes,
+    zscore_spikes
 )
 
 from .preprocess import preprocess

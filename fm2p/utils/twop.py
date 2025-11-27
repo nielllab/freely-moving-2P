@@ -424,3 +424,9 @@ def normalize_axonal_spikes(spikes, cfg):
     return norm_spikes
 
 
+def zscore_spikes(spikes):
+    zspikes = np.zeros_like(spikes) * np.nan
+    n_cells = np.size(spikes, 0)
+    for c in range(n_cells):
+        zspikes[c] = (spikes[c] - np.nanmean(spikes[c])) / np.nanstd(spikes[c])
+    return zspikes

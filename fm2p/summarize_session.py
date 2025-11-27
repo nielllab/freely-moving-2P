@@ -117,7 +117,12 @@ def summarize_session(preproc_path):
     axs[4,0].set_xlim([0,100])
     axs[4,0].set_xlabel('speed (cm/s)', fontsize=6)
 
-    axs[3,1].scatter(data['dHead'][::10], data['dEye'][::10], s=1, color='k')
+    if 'dEye' in data.keys():
+        dEye = data['dEye'][::10]
+    else:
+        dEye = data['dTheta'][::10]
+
+    axs[3,1].scatter(data['dHead'][::10], dEye, s=1, color='k')
     axs[3,1].set_xlim([-600,600])
     axs[3,1].set_ylim([-600,600])
     axs[3,1].set_xlim([-600,600])
@@ -231,7 +236,10 @@ def summarize_session(preproc_path):
     axs[3,2].set_xlabel('dEye (deg/s)')
     axs[3,3].set_xlabel('dGaze (deg/s)')
 
-    vars = ['dEye', 'dGaze']
+    if 'dEye' in data.keys():
+        vars = ['dEye', 'dGaze']
+    else:
+        vars = ['dTheta', 'dGaze']
     for i in range(2):
         if i > 0 :
             is_running = np.array(data['speed']>2.)
