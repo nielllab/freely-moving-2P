@@ -24,6 +24,119 @@ def valid_mask(items):
     return mask.astype(bool)
 
 
+def calc_reliability_over(spikes, behavior, n_cnk=10, n_shfl=100, relthresh=10, n_bins=13, bound=10):
+    # calculate reliability based on overlap between null distribution and
+    # real data, instead of old method of calculating `d`
+
+    bins = np.linspace(
+        np.nanpercentile(behavior, bound),
+        np.nanpercentile(behavior, 100-bound),
+        n_bins
+    )
+
+    n_cells = np.size(spikes, 0)
+    n_frames = np.size(spikes, 1)
+
+    cnk_sz = n_frames // n_cnk
+    all_inds = np.arange(0, n_frames)
+
+    tunings = np.zeros([
+        2,  # state (true or null)
+        n_shfl,
+        2,  # split (first or second half)
+        n_cells,
+        np.size(bins) - 1
+    ]) * np.nan
+
+    correlations = np.zeros([
+        2,
+        n_shfl,
+        n_cells
+    ])
+
+    for state_i in range(2):
+
+        # state 0 is the true data
+        # state 1 is the null data / rolled spikes
+        print('  -> Checking reliability across shuffles.')
+        for shfl_i in tqdm(range(n_shfl)):
+        
+            np.random.seed(shfl_i)
+
+            use_spikes = spikes.copy()
+
+            if state_i == 1:
+                # roll spikes a random distance relative to behavior
+                roll_distance = np.random.randint(int(n_frames*0.10), int(n_frames*0.90))
+                use_spikes = np.roll(use_spikes, roll_distance, axis=1)
+
+            chunk_order = np.arange(n_cnk)
+            np.random.shuffle(chunk_order)
+
+            split1_inds = []
+            split2_inds = []
+
+            for cnk_i, cnk in enumerate(chunk_order[:(n_cnk//2)]):
+                _inds = all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+                split1_inds.extend(_inds)
+
+            for cnk_i, cnk in enumerate(chunk_order[(n_cnk//2):]):
+                _inds = all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+                split2_inds.extend(_inds)
+
+            # list of every index that goes into the two halves of the data
+            split1_inds = np.array(np.sort(split1_inds)).astype(int)
+            split2_inds = np.array(np.sort(split2_inds)).astype(int)
+
+            if len(split1_inds)<1 or len(split2_inds)<1:
+                print('No indices used for tuning reliability measure... len of usable recording was:')
+                print(n_frames)
+
+            _, tuning1, _ = fm2p.tuning_curve(
+                use_spikes[:, split1_inds],
+                behavior[split1_inds],
+                bins
+            )
+            _, tuning2, _ = fm2p.tuning_curve(
+                use_spikes[:, split2_inds],
+                behavior[split2_inds],
+                bins
+            )
+
+            tunings[state_i,shfl_i,0,:,:] = tuning1
+            tunings[state_i,shfl_i,1,:,:] = tuning2
+
+    correlations = np.zeros([
+        n_shfl,
+        2,    # state [true, null]
+        n_cells
+    ]) * np.nan
+
+    tunings_masked = tunings.copy()
+    tunings_masked[np.isnan(tunings_masked)] = 0
+
+    for shfl_i in range(n_shfl):
+        bin_mask = ~np.isnan(tunings[0,0,0,0,:])
+        correlations[shfl_i,0,:] = [fm2p.corrcoef(tunings_masked[0,shfl_i,0,c,:], tunings_masked[0,shfl_i,1,c,:]) for c in range(n_cells)]
+        correlations[shfl_i,1,:] = [fm2p.corrcoef(tunings_masked[1,shfl_i,0,c,:], tunings_masked[1,shfl_i,1,c,:]) for c in range(n_cells)]
+    
+    reliabilities = np.zeros(n_cells)
+    for c in range(n_cells):
+        # what percent of null shuffles fall above the median of true data?
+        reliabilities[c] = np.sum(correlations[:,1,c] > np.median(correlations[:,0,c]))
+
+    reliable_inds = reliabilities <= relthresh
+
+    # dict_out = {
+    #     'past_thresh_count': reliabilities,
+    #     'reliable_inds': reliable_inds,
+    #     'correlations': correlations,
+    #     'tunings': tunings_masked
+    # }
+
+    return reliabilities, reliable_inds
+    
+
 def calc_1d_tuning(spikes, var, ltdk, bound=10, n_bins=13):
     # spikes should be 2D and have shape (cells, time)
     # var should be 1d
@@ -78,7 +191,7 @@ def tuning2d(x_vals, y_vals, rates, n_x=13, n_y=13):
     return x_bins, y_bins, heatmap
 
 
-def revcorr2(preproc_path=None):
+def eyehead_revcorr(preproc_path=None):
 
     if preproc_path is None:
         preproc_path = fm2p.select_file(
@@ -115,11 +228,19 @@ def revcorr2(preproc_path=None):
 
     ltdk = data['ltdk_state_vec'].copy()
 
+    gaze = np.cumsum(data['dGaze'].copy())
+    dGaze = data['dGaze'].copy()
+    gazeT = data['eyeT_trim'] + (np.nanmedian(data['eyeT_trim']) / 2)
+    gazeT = gazeT[:-1]
+    # dGazeT = data['eyeT_trim']
+    gaze = fm2p.interpT(gaze, gazeT, data['twopT'])
+    dGaze = fm2p.interpT(dGaze, gazeT, data['twopT'])
+
     # at some point, add in accelerations
     behavior_vars = {
         # gaze
-        'gaze': np.cumsum(data['dGaze'].copy()),
-        'dGaze': data['dGaze'].copy(),
+        'gaze': gaze,
+        'dGaze': dGaze,
         # eye positions
         'theta': data['theta_interp'].copy(),
         'phi': data['phi_interp'].copy(),
@@ -143,24 +264,39 @@ def revcorr2(preproc_path=None):
     dict_out = {}
 
     print('  -> Measuring 1D tuning to all eye/head variables.')
-    for behavior_k, behavior_v in tqdm(behavior_vars.items()):
+    for behavior_k, behavior_v in behavior_vars.items():
+
+        print(behavior_k)
 
         b, t, e = calc_1d_tuning(spikes, behavior_v, ltdk)
+
+        mod_l, ismod_l = fm2p.calc_multicell_modulation(t[:,:,1], spikes)
+        mod_d, ismod_d = fm2p.calc_multicell_modulation(t[:,:,0], spikes)
+
+        rel, isrel = calc_reliability_over(spikes, behavior_v)
 
         # shape of tuning and error will be (cells, bins, ltdk_state)
         dict_out['{}_1dbins'.format(behavior_k)] = b
         dict_out['{}_1dtuning'.format(behavior_k)] = t
         dict_out['{}_1derr'.format(behavior_k)] = e
+        dict_out['{}_l_mod'.format(behavior_k)] = mod_l
+        dict_out['{}_l_ismod'.format(behavior_k)] = ismod_l
+        dict_out['{}_d_mod'.format(behavior_k)] = mod_d
+        dict_out['{}_d_ismod'.format(behavior_k)] = ismod_d
+        dict_out['{}_rel'.format(behavior_k)] = rel
+        dict_out['{}_isrel'.format(behavior_k)] = isrel
 
     # get every pairwise combination and do the comparisons as heatmap
     print('  -> Measuring 2D tuning to all combinations of eye/head variables.')
     pairwise_combinations = tqdm(list(itertools.combinations(behavior_vars.keys(), 2)))
     for var1_key, var2_key in pairwise_combinations:
+
         x, y, H = tuning2d(
             behavior_vars[var1_key],
             behavior_vars[var2_key],
             spikes
         )
+
         dict_out['{}_vs_{}_xbins'.format(var1_key, var2_key)] = x
         dict_out['{}_vs_{}_ybins'.format(var1_key, var2_key)] = y
         dict_out['{}_vs_{}_heatmap'.format(var1_key, var2_key)] = H
@@ -173,5 +309,5 @@ def revcorr2(preproc_path=None):
 
 if __name__ == '__main__':
 
-    revcorr2(r'D:/freely_moving_data/V1PPC_cohort02/251016_DMM_DMM061_pos18/fm1/251016_DMM_DMM061_fm_01_preproc.h5')
+    eyehead_revcorr()
 
