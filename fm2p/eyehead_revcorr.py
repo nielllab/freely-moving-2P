@@ -54,11 +54,13 @@ def calc_reliability_over(spikes, behavior, n_cnk=10, n_shfl=100, relthresh=10, 
         n_cells
     ])
 
+    print('  -> Checking reliability across shuffles.')
+
     for state_i in range(2):
 
         # state 0 is the true data
         # state 1 is the null data / rolled spikes
-        print('  -> Checking reliability across shuffles.')
+        
         for shfl_i in tqdm(range(n_shfl)):
         
             np.random.seed(shfl_i)
@@ -250,7 +252,7 @@ def eyehead_revcorr(preproc_path=None):
         # head positions
         'pitch': data['pitch_twop_interp'].copy(),
         'roll': data['roll_twop_interp'].copy(),
-        'yaw': data['head_yaw_deg'].copy(),
+        'yaw': data['head_yaw_deg'].copy()[:-1],
         # head angular rotation speeds
         'gyro_x': data['gyro_x_twop_interp'].copy(),
         'gyro_y': data['gyro_y_twop_interp'].copy(),
