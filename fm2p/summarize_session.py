@@ -402,10 +402,9 @@ def summarize_session(preproc_path):
 if __name__ == '__main__':
 
 
-    # preproc_path = fm2p.select_file(
-    #     'Select preprocessing HDF file.',
-    #     filetypes=[('HDF','.h5'),])
-    # summarize_session(preproc_path)
-
-    summarize_session('/home/dylan/Storage4/V1PPC_cohort02/251016_DMM_DMM061_pos18/fm1/251016_DMM_DMM061_fm_01_preproc.h5')
+    preproc_path = fm2p.select_file(
+        'Select preprocessing HDF file.',
+        filetypes=[('HDF','.h5'),])
+    
+    summarize_session(preproc_path)
 

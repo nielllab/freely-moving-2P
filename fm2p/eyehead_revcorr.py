@@ -252,7 +252,7 @@ def eyehead_revcorr(preproc_path=None):
         # head positions
         'pitch': data['pitch_twop_interp'].copy(),
         'roll': data['roll_twop_interp'].copy(),
-        'yaw': data['head_yaw_deg'].copy()[:-1],
+        'yaw': data['head_yaw_deg'].copy(),
         # head angular rotation speeds
         'gyro_x': data['gyro_x_twop_interp'].copy(),
         'gyro_y': data['gyro_y_twop_interp'].copy(),
@@ -270,7 +270,13 @@ def eyehead_revcorr(preproc_path=None):
 
         print(behavior_k)
 
-        b, t, e = calc_1d_tuning(spikes, behavior_v, ltdk)
+        try:
+            b, t, e = calc_1d_tuning(spikes, behavior_v, ltdk)
+        except IndexError:
+            try:
+                b, t, e = calc_1d_tuning(spikes, behavior_v[:-1], ltdk)
+            except IndexError:
+                b, t, e = calc_1d_tuning(spikes[:-1], behavior_v, ltdk)
 
         mod_l, ismod_l = fm2p.calc_multicell_modulation(t[:,:,1], spikes)
         mod_d, ismod_d = fm2p.calc_multicell_modulation(t[:,:,0], spikes)
@@ -289,19 +295,19 @@ def eyehead_revcorr(preproc_path=None):
         dict_out['{}_isrel'.format(behavior_k)] = isrel
 
     # get every pairwise combination and do the comparisons as heatmap
-    print('  -> Measuring 2D tuning to all combinations of eye/head variables.')
-    pairwise_combinations = tqdm(list(itertools.combinations(behavior_vars.keys(), 2)))
-    for var1_key, var2_key in pairwise_combinations:
+    # print('  -> Measuring 2D tuning to all combinations of eye/head variables.')
+    # pairwise_combinations = tqdm(list(itertools.combinations(behavior_vars.keys(), 2)))
+    # for var1_key, var2_key in pairwise_combinations:
 
-        x, y, H = tuning2d(
-            behavior_vars[var1_key],
-            behavior_vars[var2_key],
-            spikes
-        )
+    #     x, y, H = tuning2d(
+    #         behavior_vars[var1_key],
+    #         behavior_vars[var2_key],
+    #         spikes
+    #     )
 
-        dict_out['{}_vs_{}_xbins'.format(var1_key, var2_key)] = x
-        dict_out['{}_vs_{}_ybins'.format(var1_key, var2_key)] = y
-        dict_out['{}_vs_{}_heatmap'.format(var1_key, var2_key)] = H
+    #     dict_out['{}_vs_{}_xbins'.format(var1_key, var2_key)] = x
+    #     dict_out['{}_vs_{}_ybins'.format(var1_key, var2_key)] = y
+    #     dict_out['{}_vs_{}_heatmap'.format(var1_key, var2_key)] = H
 
     basedir, _ = os.path.split(preproc_path)
     savename = os.path.join(basedir, 'eyehead_revcorrs.h5')
