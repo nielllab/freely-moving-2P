@@ -10,7 +10,7 @@ fit_GLM()
 
 
 TODO: At some point, modify the GLM so that multiple frames (in perserved
-presered temporal sequence) can be used to predict a single frame's firing
+temporal sequence) can be used to predict a single frame's firing
 rate.
 
 Author: DMM, 2025
@@ -21,53 +21,7 @@ from tqdm import tqdm
 import numpy as np
 import multiprocessing
 
-
-def fit_closed_GLM(X, y, usebias=True):
-    """ Fit a GLM for a 1D value of y (i.e., single cell).
-    
-    """
-    # y is the spike data for a single cell
-    # X is a 2D array. for prediction using {pupil, retiocentric, egocentric}, there are
-    # 3 features. So, shape should be {#frames, 3}.
-    # w will be the bias followed 
-
-    n_samples, n_features = X.shape
-
-    if usebias:
-        # Add bias (intercept) term: shape becomes (n_samples, num_features+1)
-        # bias is inserted before any of the weights for individual behavior variables, so
-        # X_aug should be {bias, w_p, w_r, w_e}
-        X_aug = np.hstack([np.ones((n_samples, 1)), X])
-    elif not usebias:
-        X_aug = X
-
-    # Closed-form solution: w = (X^T X)^(-1) X^T y
-    XtX = X_aug.T @ X_aug
-    Xty = X_aug.T @ y
-    weights = np.linalg.inv(XtX) @ Xty
-    
-    return weights
-
-
-def compute_y_hat(X, y, w):
-
-    n_samples, n_features = X.shape
-
-    # Was there a bias computed when the GLM was fit?
-    if np.size(w)==n_features+1:
-        usebias = True
-
-    if usebias:
-        # Add bias to the spike rate data
-        X_aug = np.hstack([np.ones((n_samples, 1)), X])
-    else:
-        X_aug = X.copy()
-
-    y_hat = X_aug @ w
-
-    mse = np.mean((y - y_hat)**2)
-
-    return y_hat, mse
+import fm2p
 
 
 class GLM:
@@ -274,6 +228,123 @@ def multiprocess_model_fits(X_train, X_test,
     w_c = cell_model.get_weights()
 
     return (w_c, y_hat_c.flatten(), mse_c, explvar_c, cell_model.get_loss_history())
+
+
+def fit_single(spikes, behavior, eyeT, twopT, num_lags=10, epochs=500, learning_rate=0.001, l1_penalty=0.01, l2_penalty=0.01):
+
+    X = add_temporal_features(behavior, add_lags=num_lags)
+
+    _keepFmask = ~np.isnan(X).any(axis=1)
+    X = X.copy()[_keepFmask,:]
+
+    nFrames = np.size(X, 0)
+    nCells = np.size(X, 1)
+
+    ncnk = 20
+    traintest_frac = 0.75
+    cnk_sz = nFrames // ncnk
+    _all_inds = np.arange(0,nFrames)
+    chunk_order = np.arange(ncnk)
+    np.random.shuffle(chunk_order)
+    train_test_boundary = int(ncnk * traintest_frac)
+
+    train_inds = []
+    test_inds = []
+    for cnk_i, cnk in enumerate(chunk_order):
+        _inds = _all_inds[(cnk_sz*cnk) : ((cnk_sz*(cnk+1)))]
+        if cnk_i < train_test_boundary:
+            train_inds.extend(_inds)
+        elif cnk_i >= train_test_boundary:
+            test_inds.extend(_inds)
+    train_inds = np.sort(np.array(train_inds)).astype(int)
+    test_inds = np.sort(np.array(test_inds)).astype(int)
+
+    # GLM weights for all cells
+    w = np.zeros([
+        nCells,
+        np.size(X,1)+1   # number of features + a bias term
+    ]) * np.nan
+    # Predicted spike rate for the test data
+    y_hat = np.zeros([
+        nCells,
+        len(test_inds)
+    ]) * np.nan
+    # Mean-squared error for each cell
+    mse = np.zeros(nCells) * np.nan
+    explvar = np.zeros(nCells) * np.nan
+
+    X_train = X[train_inds, :].copy()
+    X_test = X[test_inds, :].copy()
+
+    loss_histories = np.zeros([
+        nCells,
+        epochs
+    ]) * np.nan
+
+    for cell in tqdm(range(nCells)):
+
+        spikes_ = fm2p.step_interp(twopT, spikes[:, cell], eyeT)
+
+        y_train_c = spikes_[train_inds].copy()
+        y_test_c = spikes_[test_inds].copy()
+
+        cell_model = GLM(
+            learning_rate=learning_rate,
+            epochs=epochs,
+            l1_penalty=l1_penalty,
+            l2_penalty=l2_penalty,
+            loss_histories = np.zeros([
+                nCells,
+                epochs
+            ]) * np.nan
+        )
+
+        cell_model.fit(X_train, y_train_c, verbose=True)
+
+        y_hat_c, mse_c, explvar_c = cell_model.predict(X_test, y_test_c)
+
+        w_c = cell_model.get_weights()
+
+        w[cell,:] = w_c.copy()
+        y_hat[cell,:] = y_hat_c.copy().flatten()
+        mse[cell] = mse_c
+        explvar[cell] = explvar_c
+        loss_histories[cell,:] = cell_model.get_loss_history()
+
+        X_scaled = cell_model._apply_zscore(X)
+
+    dict_out = {
+        'weights': w,
+        'y_hat': y_hat,
+        'mse': mse,
+        'explvar': explvar,
+        'loss_histories': loss_histories,
+        'X_scaled': X_scaled
+    }
+
+    
+
+
+def fit_eyehead_GLM(data, cfg=None):
+
+    if cfg is None:
+        lr = 0.001
+        epochs = 5000
+        l1_penalty = 0.01
+        l2_penalty = 0.01
+        num_lags = 10
+        use_multiprocess = False
+    
+    spikes = data['raw_spikes']
+    speed = data['speed']
+    speed = np.append(speed, speed[-1])
+    use = speed > 1.5 # cm/sec
+
+    spikes = spikes[use,:]
+    theta = data['theta_trim'][use, np.newaxis]
+
+
+
 
 
 def fit_pred_GLM(spikes, pupil, retino, ego, speed, opts=None):

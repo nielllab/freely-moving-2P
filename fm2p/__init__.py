@@ -27,7 +27,8 @@ from .utils.helper import (
     mask_non_nan,
     interp_short_gaps,
     angular_diff_deg,
-    step_interp
+    step_interp,
+    bootstrap_stderr
 )
 
 from .utils.linalg import (

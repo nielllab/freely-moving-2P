@@ -429,3 +429,20 @@ def step_interp(x, y, x_new):
         result.append(y[j])
     
     return result
+
+
+def bootstrap_stderr(data, n_boot=5000):
+    """ Compute the bootstrap standard error of the median.
+    """
+
+    data = np.asarray(data)
+    n = len(data)
+    boot_medians = np.empty(n_boot)
+
+    for i in range(n_boot):
+        sample = np.random.choice(data, size=n, replace=True)
+        boot_medians[i] = np.median(sample)
+
+    se = np.std(boot_medians, ddof=1)
+
+    return se
