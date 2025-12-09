@@ -138,26 +138,30 @@ def gaussian_STA_fit(sparse_noise_sta_path):
         params_output = [result.get() for result in param_mp] # returns list of tuples
 
 
-    is_responsive = np.zeros([n_cells,2]) # 0=neg, 1=pos
-    corr2d = np.zeros([n_cells,2])
-    centroids = np.zeros([n_cells, 2, 2])
-    amplitudes = np.zeros([n_cells, 2])
-    baselines = np.zeros([n_cells, 2])
-    sigmas = np.zeros([n_cells, 2, 2])
-    tilts = np.zeros([n_cells, 2, 2])
+    is_responsive = np.zeros([n_cells,2]) * np.nan # 0=neg, 1=pos
+    corr2d = np.zeros([n_cells,2]) * np.nan
+    centroids = np.zeros([n_cells, 2, 2]) * np.nan
+    amplitudes = np.zeros([n_cells, 2]) * np.nan
+    baselines = np.zeros([n_cells, 2]) * np.nan
+    sigmas = np.zeros([n_cells, 2, 2]) * np.nan
+    tilts = np.zeros([n_cells, 2, 2]) * np.nan
 
     for c in params_output:
         for di, direc in enumerate(['negative', 'positive']):
             corr2d[c,di] = params_output[c][direc]['corr2d']
-            centroids[c,di,0] = params_output[c][direc]['centroid'][0] # x
-            centroids[c,di,1] = params_output[c][direc]['centroid'][1] # y
-            amplitudes[c,di] = params_output[c][direc]['amplitude']
-            baselines[c,di] = params_output[c][direc]['baseline']
-            sigmas[c,di,0] = params_output[c][direc]['sigma_x']
-            sigmas[c,di,1] = params_output[c][direc]['sigma_y']
-            tilts[c,di,0] = params_output[c][direc]['tilt'][0]
-            tilts[c,di,1] = params_output[c][direc]['tilt'][1]
             is_responsive[c,di] = params_output[c][direc]['isresp']
+            try:
+                centroids[c,di,0] = params_output[c][direc]['centroid'][0] # x
+                centroids[c,di,1] = params_output[c][direc]['centroid'][1] # y
+                amplitudes[c,di] = params_output[c][direc]['amplitude']
+                baselines[c,di] = params_output[c][direc]['baseline']
+                sigmas[c,di,0] = params_output[c][direc]['sigma_x']
+                sigmas[c,di,1] = params_output[c][direc]['sigma_y']
+                tilts[c,di,0] = params_output[c][direc]['tilt'][0]
+                tilts[c,di,1] = params_output[c][direc]['tilt'][1]
+            except:
+                pass
+            
 
     pool.close()
 
