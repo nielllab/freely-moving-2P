@@ -3,7 +3,10 @@ import fm2p
 import argparse
 import numpy as np
 import gc
+import platform
+from tqdm import tqdm
 
+os_name = platform.system()
 
 def calc_sparse_noise_STAs(preproc_path=None, stimpath=None):
 
@@ -14,7 +17,11 @@ def calc_sparse_noise_STAs(preproc_path=None, stimpath=None):
         )
 
     if stimpath is None:
-        stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
+        if os_name == "Linux":
+            stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
+        elif os_name == "Windows":
+            stimpath = r'J:\sparse_noise\sparse_noise_sequence_v7.npy'
+
     stimulus = np.load(stimpath)[:,:,:,0]
 
     data = fm2p.read_h5(preproc_path)
@@ -59,11 +66,16 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
         )
 
     if stimpath is None:
-        stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
+        if os_name == 'Linux':
+            stimpath = '/home/dylan/Documents/sparse_noise_sequence_v7.npy'
+        elif os_name == 'Windows':
+            stimpath = r'J:\sparse_noise\sparse_noise_sequence_v7.npy'
 
     print('  -> Loading preprocessed data.')
     data = fm2p.read_h5(preproc_path)
+
     print('  -> Loading stimulus.')
+
     stimulus = np.load(stimpath)[:,:,:,0]
     spikes = data['s2p_spks']
     stimT = data['stimT']
@@ -97,25 +109,60 @@ def calc_sparse_noise_STA_reliability(preproc_path=None, stimpath=None):
     fm2p.write_h5(savepath, dict_out)
 
 
-def sparse_noise_mapping(prepath=None):
-     
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-cr', '--check_reliability', type=fm2p.str_to_bool, default=True)
-    args = parser.parse_args()
-    check_reliability = args.check_reliability
+def calc_STA_correlation(splitSTAs_path):
 
-    if check_reliability:
+    dict_in = fm2p.read_h5(splitSTAs_path)
+
+    STA1 = dict_in['STA1']
+    STA2 = dict_in['STA2']
+
+    n_cells = np.size(STA1,0)
+    corr = np.zeros(n_cells) * np.nan
+    isresp = np.zeros_like(corr) * np.nan
+
+    for c in tqdm(range(n_cells)):
+        corr[c] = fm2p.corr2_coeff(STA1, STA2)
+        isresp[c] = int(corr[c] >= 0.10)
+        
+    arr_out = np.concatenate([corr, isresp], axis=1)
+
+    savepath = os.path.join(os.path.split(splitSTAs_path)[0], 'reliability_stats.npy')
+    np.save(savepath, arr_out)
+
+
+def sparse_noise_mapping(prepath=None, method=None):
+
+    if prepath is None or method is None:
+        prepath = fm2p.select_file(
+            'Select sparse noise HDF file.',
+            [('HDF','.h5'),]
+        )
+        method = fm2p.get_string_input(
+            'Select method (splits, reliability, or single).'
+        )
+
+    if method == 'splits':
         calc_sparse_noise_STA_reliability(
             prepath
         )
 
-    elif not check_reliability:
+    elif method == 'reliability':
+        calc_STA_correlation(
+            prepath
+        )
+
+    elif method == 'single':
         calc_sparse_noise_STAs(
             prepath
         )
      
 
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-method', '--method', type=str, default='splits')
+    parser.add_argument('-path', '--path', type=str, default=None)
+    args = parser.parse_args()
     
-    sparse_noise_mapping()
+    sparse_noise_mapping(args.path, args.method)
 
