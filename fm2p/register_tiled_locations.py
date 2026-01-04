@@ -299,8 +299,20 @@ class ManualImageAligner:
         self.base_tk = ImageTk.PhotoImage(self.base_image)
         self.base_canvas_id = self.canvas.create_image(0, 0, anchor="nw", image=self.base_tk)
 
-        self.btn_accept = Button(self.root, text="Accept Alignment", command=self.accept_alignment)
+        self.btn_accept = Button(self.root, text="", command=self.accept_alignment)
         self.btn_accept.pack()
+
+        def update_accept_button_text():
+            try:
+                if self.index <= 0:
+                    self.btn_accept.config(text="Place First Tile")
+                else:
+                    self.btn_accept.config(text="Accept Alignment and Place Next")
+            except Exception:
+                pass
+
+        # expose as attribute for other methods to call
+        self.update_accept_button_text = update_accept_button_text
 
         self.btn_flip = Button(self.root, text="Flip", command=self.toggle_flip)
         self.btn_flip.pack()
@@ -355,6 +367,12 @@ class ManualImageAligner:
 
         print('Drawing image from position {}'.format(self.position_keys[self.index]))
         self.draw_small_image()
+        # update accept button text to reflect first/next tile state
+        try:
+            if hasattr(self, 'update_accept_button_text'):
+                self.update_accept_button_text()
+        except Exception:
+            pass
 
 
     def draw_small_image(self):
@@ -431,6 +449,13 @@ class ManualImageAligner:
 
         self.current_angle = 0
         self.current_offset = np.array([50, 50], float)
+        # update accept button text for subsequent tiles
+        try:
+            if hasattr(self, 'update_accept_button_text'):
+                self.update_accept_button_text()
+        except Exception:
+            pass
+
         self.load_small_image()
 
     def run(self):
@@ -477,8 +502,9 @@ class ManualImageAligner:
         canvas = tk.Canvas(win, width=self.fullimg_pil.width, height=self.fullimg_pil.height)
         canvas.pack()
 
-        # base composite image (without tiles) - start from the full image
-        base_img = self.base_image.copy()
+        # base composite image (without tiles) - start from the original full image
+        # use original fullimg so we don't double-draw tiles that were pasted
+        base_img = self.fullimg_pil.copy()
         base_tk = ImageTk.PhotoImage(base_img)
         base_id = canvas.create_image(0, 0, anchor='nw', image=base_tk)
 
@@ -511,6 +537,8 @@ class ManualImageAligner:
                 'y': float(y),
                 'tkimg': tkimg,
                 'base_pil': img_pil,
+                'w_rot': rotated.width,
+                'h_rot': rotated.height,
             })
             
 
@@ -520,6 +548,43 @@ class ManualImageAligner:
 
         selected = {'idx': None}
         move_all = {'active': False}
+
+        # highlight rectangle + label for selected tile
+        sel_visual = {'rect': None, 'label': None}
+
+        drag = {'start': None, 'offset': (0, 0)}
+
+        def update_selection_visual():
+            # remove old visuals
+            if sel_visual['rect'] is not None:
+                try:
+                    canvas.delete(sel_visual['rect'])
+                except Exception:
+                    pass
+                sel_visual['rect'] = None
+            if sel_visual['label'] is not None:
+                try:
+                    canvas.delete(sel_visual['label'])
+                except Exception:
+                    pass
+                sel_visual['label'] = None
+
+            idx = selected['idx']
+            if idx is None:
+                return
+            s = tile_state[idx]
+            w = s.get('w_rot', 0)
+            h = s.get('h_rot', 0)
+            x = s['x']
+            y = s['y']
+            x0 = int(x - w/2)
+            y0 = int(y - h/2)
+            x1 = int(x + w/2)
+            y1 = int(y + h/2)
+            # draw rectangle and a small label with index/key
+            sel_visual['rect'] = canvas.create_rectangle(x0, y0, x1, y1, outline='red', width=2)
+            label_text = f"{idx}: {self.position_keys[idx] if idx < len(self.position_keys) else ''}"
+            sel_visual['label'] = canvas.create_text(x0+5, y0+10, anchor='nw', text=label_text, fill='yellow', font=('TkDefaultFont', 10, 'bold'))
 
         def find_tile_at(x, y):
             hits = canvas.find_overlapping(x, y, x, y)
@@ -537,13 +602,26 @@ class ManualImageAligner:
             if idx is not None:
                 cid = tile_state[idx]['cid']
                 canvas.tag_raise(cid)
+            update_selection_visual()
 
-        drag = {'start': None}
+            # prepare drag offset so tile doesn't jump when user starts dragging
+            if idx is not None:
+                drag['start'] = (event.x, event.y)
+                s = tile_state[idx]
+                # offset mouse - tile_center so during drag tile remains under cursor
+                drag['offset'] = (event.x - s['x'], event.y - s['y'])
 
         def on_start_drag(event):
+            # generic start drag for middle/right buttons
             drag['start'] = (event.x, event.y)
+            # if a tile is selected, compute offset so movement is relative to cursor
+            idx = selected['idx']
+            if idx is not None:
+                s = tile_state[idx]
+                drag['offset'] = (event.x - s['x'], event.y - s['y'])
 
         def on_drag(event):
+            # If moving all, use delta motion (so group moves smoothly)
             if drag['start'] is None:
                 drag['start'] = (event.x, event.y)
             dx = event.x - drag['start'][0]
@@ -551,19 +629,24 @@ class ManualImageAligner:
             drag['start'] = (event.x, event.y)
 
             if move_all['active']:
-                # move every tile
+                # move every tile by delta
                 for s in tile_state:
                     s['x'] += dx
                     s['y'] += dy
                     canvas.coords(s['cid'], int(s['x']), int(s['y']))
+                update_selection_visual()
             else:
                 idx = selected['idx']
                 if idx is None:
                     return
                 s = tile_state[idx]
-                s['x'] += dx
-                s['y'] += dy
+                # use stored offset so the tile remains under the cursor position
+                offx, offy = drag.get('offset', (0, 0))
+                s['x'] = event.x - offx
+                s['y'] = event.y - offy
                 canvas.coords(s['cid'], int(s['x']), int(s['y']))
+                # update selection rectangle if the moved tile is selected
+                update_selection_visual()
 
         def on_wheel(event):
             # rotate selected tile
@@ -595,6 +678,8 @@ class ManualImageAligner:
         def toggle_move_all():
             move_all['active'] = not move_all['active']
             btn_move_all.config(relief='sunken' if move_all['active'] else 'raised')
+            # clear selection visual when switching to move-all
+            update_selection_visual()
 
 
         def flip_selected():
@@ -612,6 +697,12 @@ class ManualImageAligner:
             s['tkimg'] = ImageTk.PhotoImage(rotated)
             canvas.itemconfig(s['cid'], image=s['tkimg'])
             win._tile_state[idx] = s
+            # update visual sizes stored
+            tile_state[idx] = s
+            # update stored rotated sizes for selection rectangle
+            tile_state[idx]['w_rot'] = rotated.width
+            tile_state[idx]['h_rot'] = rotated.height
+            update_selection_visual()
 
         def accept():
             # write back to self.transforms
@@ -627,6 +718,7 @@ class ManualImageAligner:
                     self.transforms.append((float(s['x']), float(s['y']), float(s['angle']), bool(s['flipped'])))
 
             win.destroy()
+
 
         # bindings
         canvas.bind('<ButtonPress-1>', on_click)
@@ -773,14 +865,26 @@ def register_tiled_locations():
     smallimgs = []
     pos_keys = []
     preproc_paths = fm2p.find('*DMM061*preproc.h5', '/home/dylan/Storage4/V1PPC_cohort02')
-    # preproc_paths = [p for p in preproc_paths if '251016_DMM_DMM056_pos13' not in p]
-    for p in tqdm(preproc_paths):
+    entries = []
+    for p in preproc_paths:
         main_key = os.path.split(os.path.split(os.path.split(p)[0])[0])[1]
         pos_key = main_key.split('_')[-1]
+        # attempt to parse numeric suffix for ordering
+        try:
+            pos_num = int(''.join([c for c in pos_key if c.isdigit()]))
+        except Exception:
+            pos_num = pos_key
         pdata = fm2p.read_h5(p)
         singlemap = pdata['twop_ref_img']
+        entries.append((pos_num, pos_key, singlemap, p))
+
+    # sort by numeric position (if parse succeeded), otherwise by pos_key
+    entries.sort(key=lambda x: x[0])
+    for pos_num, pos_key, singlemap, p in entries:
         smallimgs.append(singlemap)
         pos_keys.append(pos_key)
+    # replace preproc_paths with the sorted order for later loops
+    preproc_paths = [e[3] for e in entries]
 
 
     aligner = ManualImageAligner(resized_fullimg, smallimgs, pos_keys, scale_factor=1.0)
