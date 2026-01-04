@@ -78,12 +78,46 @@ class ManualImageAligner:
 
         self.scale_factor = scale_factor
 
+        # per-image horizontal flip flags
+        self.flipped_flags = [False] * len(self.small_imgs_pil)
+
         # will store as [x_center, y_center, angle_degrees]
         self.transforms = []
 
         self.index = 0
         self.current_angle = 0
         self.current_offset = np.array([50, 50], float)
+        # enable debug prints for wheel events when troubleshooting
+        self.debug_wheel = False
+
+    def _wheel_step_from_event(self, event, scale=2.0):
+        """Normalize a mouse wheel event to a rotation step in degrees.
+
+        Handles Windows (<MouseWheel> with event.delta), X11 (<Button-4/5> with event.num),
+        and systems that send small fractional deltas (e.g. smooth scrolling).
+        Returns a signed float (positive = rotate up/right, negative = rotate down/left).
+        """
+        # Prefer event.delta when present
+        delta = getattr(event, 'delta', None)
+        if delta is not None and delta != 0:
+            # delta on Windows often in multiples of 120 per notch.
+            try:
+                d = float(delta)
+                if abs(d) >= 1.0:
+                    return (d / 120.0) * scale
+                # small fractional deltas (smooth scrolling) -> preserve sign
+                return math.copysign(scale, d)
+            except Exception:
+                return 0.0
+
+        # Fallback to event.num used on X11: 4=up,5=down
+        num = getattr(event, 'num', None)
+        if num == 4:
+            return float(scale)
+        if num == 5:
+            return float(-scale)
+
+        return 0.0
 
 
     def choose_scale_factor(self, fullimg_arr, small_images, start_idx=0):
@@ -248,7 +282,6 @@ class ManualImageAligner:
 
         win.mainloop()
 
-
     def _setup_alignment_window(self):
 
         print('Opening alignment window.')
@@ -269,6 +302,9 @@ class ManualImageAligner:
         self.btn_accept = Button(self.root, text="Accept Alignment", command=self.accept_alignment)
         self.btn_accept.pack()
 
+        self.btn_flip = Button(self.root, text="Flip", command=self.toggle_flip)
+        self.btn_flip.pack()
+
         self.btn_quit = Button(self.root, text="Quit", command=self.root.destroy)
         self.btn_quit.pack()
 
@@ -279,6 +315,21 @@ class ManualImageAligner:
         self.canvas.bind("<MouseWheel>", self.rotate_image)
         self.canvas.bind("<Button-4>", self.rotate_image)
         self.canvas.bind("<Button-5>", self.rotate_image)
+
+        # also bind application-wide so wheel events are caught even
+        # when the canvas doesn't have focus (fixes behavior on Linux/Ubuntu)
+        try:
+            self.root.bind_all("<MouseWheel>", self.rotate_image)
+            self.root.bind_all("<Button-4>", self.rotate_image)
+            self.root.bind_all("<Button-5>", self.rotate_image)
+        except Exception:
+            # fallback to widget-level binds if bind_all not supported
+            try:
+                self.root.bind("<MouseWheel>", self.rotate_image)
+                self.root.bind("<Button-4>", self.rotate_image)
+                self.root.bind("<Button-5>", self.rotate_image)
+            except Exception:
+                pass
 
 
     def load_small_image(self):
@@ -291,6 +342,11 @@ class ManualImageAligner:
 
         scaled = img.resize((int(w*self.scale_factor), int(h*self.scale_factor)),
                             Image.BILINEAR)
+
+        # apply horizontal flip if user toggled it for this tile
+        if self.flipped_flags[self.index]:
+            scaled = scaled.transpose(Image.FLIP_LEFT_RIGHT)
+
         rotated = scaled.rotate(self.current_angle, expand=True)
 
         self.current_pil = rotated
@@ -299,6 +355,7 @@ class ManualImageAligner:
 
         print('Drawing image from position {}'.format(self.position_keys[self.index]))
         self.draw_small_image()
+
 
     def draw_small_image(self):
         if hasattr(self, "small_img_canvas_id"):
@@ -319,26 +376,32 @@ class ManualImageAligner:
         self.draw_small_image()
 
     def rotate_image(self, event):
-        delta = getattr(event, 'delta', None)
-        if delta is not None:
-            step = (delta / 120.0) * 2.0
-        else:
-            if getattr(event, 'num', None) == 4:
-                step = 2.0
-            elif getattr(event, 'num', None) == 5:
-                step = -2.0
-            else:
-                step = 0.0
+        # normalize wheel event to rotation step
+        step = self._wheel_step_from_event(event, scale=2.0)
+        if self.debug_wheel:
+            print(f"rotate_image event: delta={getattr(event,'delta',None)} num={getattr(event,'num',None)} -> step={step}")
 
-        self.current_angle = (self.current_angle + step) % 360.0
-        self.load_small_image()
+        if step != 0.0:
+            self.current_angle = (self.current_angle + step) % 360.0
+            self.load_small_image()
+
+
+    def toggle_flip(self):
+        # toggle the flip flag for the current tile and redraw
+        if self.index < len(self.flipped_flags):
+            self.flipped_flags[self.index] = not self.flipped_flags[self.index]
+            print(f"Tile {self.index} flipped: {self.flipped_flags[self.index]}")
+            self.load_small_image()
 
     def accept_alignment(self):
         # paste the sml img into WF img
+        # record transform: x_center, y_center, angle_degrees, flipped_flag
+        flipped_flag = bool(self.flipped_flags[self.index]) if self.index < len(self.flipped_flags) else False
         self.transforms.append((
             float(self.current_offset[0]),
             float(self.current_offset[1]),
-            float(self.current_angle)
+            float(self.current_angle),
+            flipped_flag,
         ))
 
         if hasattr(self, 'current_pil') and self.current_pil is not None:
@@ -385,7 +448,219 @@ class ManualImageAligner:
         self.load_small_image()
         self.root.mainloop()
 
+        # After per-tile alignment, offer a composite fine-tune stage
+        try:
+            self.fine_tune_transforms()
+        except Exception as e:
+            print('Fine-tune stage failed or was cancelled:', e)
+
         return self.transforms
+
+
+    def fine_tune_transforms(self):
+        """Open a window showing all tiles together for fine adjustments.
+
+        Features:
+        - Click a tile to select it
+        - Drag to move selected tile (or all tiles if "Move All" is active)
+        - Mouse wheel to rotate selected tile
+        - Flip button to toggle horizontal flip on selected tile
+        - Accept button to save adjustments into self.transforms
+        """
+        if len(self.transforms) == 0:
+            print('No transforms to fine-tune.')
+            return
+
+        win = tk.Toplevel()
+        win.title('Composite Fine-tune')
+
+        canvas = tk.Canvas(win, width=self.fullimg_pil.width, height=self.fullimg_pil.height)
+        canvas.pack()
+
+        # base composite image (without tiles) - start from the full image
+        base_img = self.base_image.copy()
+        base_tk = ImageTk.PhotoImage(base_img)
+        base_id = canvas.create_image(0, 0, anchor='nw', image=base_tk)
+
+        # state for each tile: keep current angle, flipped, center coords, and tk image
+        tile_state = []
+
+        for idx, img_pil in enumerate(self.small_imgs_pil):
+            # get transform tuple
+            t = self.transforms[idx] if idx < len(self.transforms) else (50.0, 50.0, 0.0, False)
+            if len(t) >= 4:
+                x, y, angle, flipped = t[0], t[1], t[2], bool(t[3])
+            else:
+                x, y, angle = t
+                flipped = False
+
+            w, h = img_pil.size
+            scaled = img_pil.resize((int(w * self.scale_factor), int(h * self.scale_factor)), Image.BILINEAR)
+            if flipped:
+                scaled = scaled.transpose(Image.FLIP_LEFT_RIGHT)
+            rotated = scaled.rotate(angle, expand=True)
+
+            tkimg = ImageTk.PhotoImage(rotated)
+            cid = canvas.create_image(int(x), int(y), anchor='center', image=tkimg)
+
+            tile_state.append({
+                'cid': cid,
+                'angle': float(angle),
+                'flipped': bool(flipped),
+                'x': float(x),
+                'y': float(y),
+                'tkimg': tkimg,
+                'base_pil': img_pil,
+            })
+            
+
+        # keep references so they are not GC'd
+        win._tile_state = tile_state
+        win._base_tk = base_tk
+
+        selected = {'idx': None}
+        move_all = {'active': False}
+
+        def find_tile_at(x, y):
+            hits = canvas.find_overlapping(x, y, x, y)
+            # find topmost tile id that is not base
+            for h in reversed(hits):
+                for i, s in enumerate(tile_state):
+                    if s['cid'] == h:
+                        return i
+            return None
+
+        def on_click(event):
+            idx = find_tile_at(event.x, event.y)
+            selected['idx'] = idx
+            # bring selected on top
+            if idx is not None:
+                cid = tile_state[idx]['cid']
+                canvas.tag_raise(cid)
+
+        drag = {'start': None}
+
+        def on_start_drag(event):
+            drag['start'] = (event.x, event.y)
+
+        def on_drag(event):
+            if drag['start'] is None:
+                drag['start'] = (event.x, event.y)
+            dx = event.x - drag['start'][0]
+            dy = event.y - drag['start'][1]
+            drag['start'] = (event.x, event.y)
+
+            if move_all['active']:
+                # move every tile
+                for s in tile_state:
+                    s['x'] += dx
+                    s['y'] += dy
+                    canvas.coords(s['cid'], int(s['x']), int(s['y']))
+            else:
+                idx = selected['idx']
+                if idx is None:
+                    return
+                s = tile_state[idx]
+                s['x'] += dx
+                s['y'] += dy
+                canvas.coords(s['cid'], int(s['x']), int(s['y']))
+
+        def on_wheel(event):
+            # rotate selected tile
+            idx = selected['idx']
+            if idx is None:
+                return
+
+            step = self._wheel_step_from_event(event, scale=2.0)
+            if self.debug_wheel:
+                print(f"fine-tune on_wheel event: delta={getattr(event,'delta',None)} num={getattr(event,'num',None)} -> step={step}")
+
+            if step == 0.0:
+                return
+
+            s = tile_state[idx]
+            s['angle'] = (s['angle'] + step) % 360.0
+            # recreate image
+            pil = s['base_pil']
+            w, h = pil.size
+            scaled = pil.resize((int(w * self.scale_factor), int(h * self.scale_factor)), Image.BILINEAR)
+            if s['flipped']:
+                scaled = scaled.transpose(Image.FLIP_LEFT_RIGHT)
+            rotated = scaled.rotate(s['angle'], expand=True)
+            s['tkimg'] = ImageTk.PhotoImage(rotated)
+            canvas.itemconfig(s['cid'], image=s['tkimg'])
+            # keep reference
+            win._tile_state[idx] = s
+
+        def toggle_move_all():
+            move_all['active'] = not move_all['active']
+            btn_move_all.config(relief='sunken' if move_all['active'] else 'raised')
+
+
+        def flip_selected():
+            idx = selected['idx']
+            if idx is None:
+                return
+            s = tile_state[idx]
+            s['flipped'] = not s['flipped']
+            pil = s['base_pil']
+            w, h = pil.size
+            scaled = pil.resize((int(w * self.scale_factor), int(h * self.scale_factor)), Image.BILINEAR)
+            if s['flipped']:
+                scaled = scaled.transpose(Image.FLIP_LEFT_RIGHT)
+            rotated = scaled.rotate(s['angle'], expand=True)
+            s['tkimg'] = ImageTk.PhotoImage(rotated)
+            canvas.itemconfig(s['cid'], image=s['tkimg'])
+            win._tile_state[idx] = s
+
+        def accept():
+            # write back to self.transforms
+            for i, s in enumerate(tile_state):
+                # update existing transform entries
+                if i < len(self.transforms):
+                    t = self.transforms[i]
+                    if len(t) >= 4:
+                        self.transforms[i] = (float(s['x']), float(s['y']), float(s['angle']), bool(s['flipped']))
+                    else:
+                        self.transforms[i] = (float(s['x']), float(s['y']), float(s['angle']), bool(s['flipped']))
+                else:
+                    self.transforms.append((float(s['x']), float(s['y']), float(s['angle']), bool(s['flipped'])))
+
+            win.destroy()
+
+        # bindings
+        canvas.bind('<ButtonPress-1>', on_click)
+        canvas.bind('<ButtonPress-3>', on_start_drag)
+        canvas.bind('<B3-Motion>', on_drag)
+        canvas.bind('<ButtonPress-2>', on_start_drag)
+        canvas.bind('<B2-Motion>', on_drag)
+        canvas.bind('<B1-Motion>', on_drag)
+        canvas.bind('<MouseWheel>', on_wheel)
+        canvas.bind('<Button-4>', on_wheel)
+        canvas.bind('<Button-5>', on_wheel)
+
+        # Also bind application-wide (works on Linux/Ubuntu with physical mice)
+        try:
+            win.bind_all('<MouseWheel>', on_wheel)
+            win.bind_all('<Button-4>', on_wheel)
+            win.bind_all('<Button-5>', on_wheel)
+        except Exception:
+            pass
+
+        # Controls
+        ctrl_frame = tk.Frame(win)
+        ctrl_frame.pack(fill='x')
+
+        btn_move_all = Button(ctrl_frame, text='Move All', command=toggle_move_all)
+        btn_move_all.pack(side='left')
+
+        btn_flip = Button(ctrl_frame, text='Flip Selected', command=flip_selected)
+        btn_flip.pack(side='left')
+
+        btn_accept = Button(ctrl_frame, text='Accept', command=accept)
+        btn_accept.pack(side='right')
+
+        win.mainloop()
 
     # do coord transform from within small img to full widefield map
     # needs to know which small tile / stitching positoin the cell is in,
@@ -398,8 +673,13 @@ class ManualImageAligner:
     def local_to_global(self, img_index, x_local, y_local):
         if img_index >= len(self.transforms):
             raise ValueError("Image transform not available yet.")
-
-        x_center, y_center, angle_deg = self.transforms[img_index]
+        t = self.transforms[img_index]
+        # support older transforms without flip flag
+        if len(t) >= 4:
+            x_center, y_center, angle_deg, flipped_flag = t[0], t[1], t[2], bool(t[3])
+        else:
+            x_center, y_center, angle_deg = t
+            flipped_flag = False
         theta = math.radians(angle_deg)
 
         img_pil = self.small_imgs_pil[img_index]
@@ -413,6 +693,9 @@ class ManualImageAligner:
         cy = (h * self.scale_factor) / 2
         dx = x_s - cx
         dy = y_s - cy
+        # if tile was flipped horizontally, mirror x before rotation
+        if flipped_flag:
+            dx = -dx
         # rotate
         xr = dx * math.cos(theta) - dy * math.sin(theta)
         yr = dx * math.sin(theta) + dy * math.cos(theta)
@@ -430,11 +713,20 @@ def overlay_registered_images(fullimg, small_images, transforms, scale_factor=1.
     
     base = Image.fromarray(fullimg).copy()
     
-    for img_arr, (x, y, angle) in zip(small_images, transforms):
+    for img_arr, t in zip(small_images, transforms):
+        # support both (x,y,angle) and (x,y,angle,flipped)
+        if len(t) >= 4:
+            x, y, angle, flipped = t[0], t[1], t[2], bool(t[3])
+        else:
+            x, y, angle = t
+            flipped = False
+
         pil = Image.fromarray(img_arr)
         w, h = pil.size
 
         scaled = pil.resize((int(w * scale_factor), int(h * scale_factor)), Image.BILINEAR)
+        if flipped:
+            scaled = scaled.transpose(Image.FLIP_LEFT_RIGHT)
         rotated = scaled.rotate(angle, expand=True)
 
         # w/ alpha mask
@@ -452,7 +744,10 @@ def register_tiled_locations():
     #     'Choose widefield template TIF.',
     #     filetypes=[('TIF','.tif'), ('TIFF', '.tiff'), ]
     # )
-    fullimg_path = '/home/dylan/Fast0/Dropbox/_temp/250929_DMM056_signmap/250929_DMM056_signmap_refimg.tif'
+    # fullimg_path = '/home/dylan/Fast0/Dropbox/_temp/250929_DMM056_signmap/250929_DMM056_signmap_refimg.tif'
+    fullimg_path = '/home/dylan/Fast0/Dropbox/_temp/251104_DMM066_signmap/map1_000001.tif'
+
+    
     fullimg = np.array(Image.open(fullimg_path))
     
     newshape = (fullimg.shape[0] // 2, fullimg.shape[1] // 2)
@@ -477,8 +772,8 @@ def register_tiled_locations():
 
     smallimgs = []
     pos_keys = []
-    preproc_paths = fm2p.find('*DMM056*preproc.h5', '/home/dylan/Storage4/V1PPC_cohort02')
-    preproc_paths = [p for p in preproc_paths if '251016_DMM_DMM056_pos13' not in p]
+    preproc_paths = fm2p.find('*DMM061*preproc.h5', '/home/dylan/Storage4/V1PPC_cohort02')
+    # preproc_paths = [p for p in preproc_paths if '251016_DMM_DMM056_pos13' not in p]
     for p in tqdm(preproc_paths):
         main_key = os.path.split(os.path.split(os.path.split(p)[0])[0])[1]
         pos_key = main_key.split('_')[-1]
@@ -516,7 +811,7 @@ def register_tiled_locations():
 
         all_global_positions[pos_key] = cell_positions
 
-    fm2p.write_h5(r'D:\freely_moving_data\V1PPC_cohort02\DMM056_aligned_composite_local_to_global_transform_v2.h5',  all_global_positions)
+    fm2p.write_h5(r'/home/dylan/Fast0/Dropbox/_temp/DMM061_aligned_composite_local_to_global_transform_v2.h5',  all_global_positions)
 
 
 

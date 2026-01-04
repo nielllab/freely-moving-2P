@@ -381,3 +381,9 @@ def normalize_for_hdf(df):
                     return repr(x)
             df_fixed[col] = s.map(clean).astype(str)
     return df_fixed
+
+
+def read_json(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    return data
