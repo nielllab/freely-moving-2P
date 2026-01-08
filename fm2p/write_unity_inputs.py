@@ -1,4 +1,5 @@
 import os
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -80,35 +81,74 @@ def combine_camera_gaze(camera_euler, gaze_az_el):
     return (pitch, yaw, roll)
 
 
-def write_unity_inputs(data_path, savepath):
+def write_ego_inputs(data_path, savepath):
 
     data_path = fm2p.find('*preproc.h5', data_path, MR=True)
     data = fm2p.read_h5(data_path)
 
-    # if 'eyeT_startInd' not in data.keys():
-    #     data['eyeT_startInd'] = 0
-    #     data['eyeT_endInd'] = len(data['theta'])
     if 'twopT' not in data.keys():
         twop_dt = 1/7.5
         data['twopT'] = np.arange(0, len(data['x'])*twop_dt, twop_dt)
         if len(data['twopT']) > len(data['x']):
             data['twopT'] = data['twopT'][:-1]
 
-    # theta = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
-    # phi = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
     pitch = - data['pitch']
     roll = data['roll']
-    # eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
-    # eyeT = eyeT - eyeT[0]
     imuT = data['imuT'] - data['imuT'][0]
-    # twopT = np.hstack([data['twopT'], data['twopT'][-1] + np.median(np.diff(data['twopT']))])
     yaw = fm2p.interpT(data['head_yaw_deg'], data['twopT'], imuT)
-    x = fm2p.interpT(data['x'], data['twopT'], imuT) / 34.21935483870968
+    x = fm2p.interpT(data['x'], data['twopT'], imuT) / 34.21935483870968 # to convert from pixels to cm
     y = fm2p.interpT(data['y'], data['twopT'], imuT) / 34.21935483870968
 
     df = pd.DataFrame({
         'theta': np.zeros(len(x))*np.nan,
         'phi': np.zeros(len(x))*np.nan,
+        'pitch': pitch,
+        'roll': roll,
+        'yaw': yaw,
+        'x': x,
+        'y': y,
+        'eyeT': imuT
+    })
+
+    df_interp = df.copy()
+    for col in df.columns:
+        if np.sum(np.isnan(df[col])) != len(df):
+            df_interp[col] = fm2p.nan_interp(df[col].to_numpy())
+
+    df_interp['gaze_az'] = np.zeros(len(x))*np.nan
+    df_interp['gaze_el'] = np.zeros(len(x))*np.nan
+
+    df_interp.to_csv(savepath, index=False)
+
+    return df_interp
+
+
+def write_gaze_inputs(data_path, savepath):
+
+    data_path = fm2p.find('*preproc.h5', data_path, MR=True)
+    data = fm2p.read_h5(data_path)
+
+    if 'twopT' not in data.keys():
+        twop_dt = 1/7.5
+        data['twopT'] = np.arange(0, len(data['x'])*twop_dt, twop_dt)
+        if len(data['twopT']) > len(data['x']):
+            data['twopT'] = data['twopT'][:-1]
+
+    theta = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
+    phi = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
+    pitch = - data['pitch']
+    roll = data['roll']
+    eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
+    eyeT = eyeT - eyeT[0]
+    imuT = data['imuT'] - data['imuT'][0]
+    twopT = np.hstack([data['twopT'], data['twopT'][-1] + np.median(np.diff(data['twopT']))])
+    yaw = fm2p.interpT(data['head_yaw_deg'], data['twopT'], imuT)
+    x = fm2p.interpT(data['x'], data['twopT'], imuT) / 34.21935483870968 # to convert from pixels to cm
+    y = fm2p.interpT(data['y'], data['twopT'], imuT) / 34.21935483870968
+
+    df = pd.DataFrame({
+        'theta': theta,
+        'phi': phi,
         'pitch': pitch,
         'roll': roll,
         'yaw': yaw,
@@ -214,23 +254,39 @@ def handheld_worldcam_preprocessing(datadir):
 
 if __name__ == '__main__':
 
-    # data_path = fm2p.select_file(
-    #     "Choose preprocessing file.",
-    #     filetypes=[('HDF','.h5'),]
-    # )
-    # savedir, dataname = os.path.split(data_path)
-    # savepath = os.path.join(savedir, '{}_unity_inputs.csv'.format(dataname[:-10]))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-method', '--method', type=str, default='ego_inputs')
+    args = parser.parse_args()
 
-    # data = fm2p.read_h5(data_path)
-    # _ = write_unity_inputs(data, savepath)
-    # print('Wrote {}'.format(savepath))
+    if args.method == 'ego_inputs':
 
-    datadir = fm2p.select_directory(
-        'Select recording directory'
-    )
+        datapath = fm2p.select_file(
+            'Choose preprocessing file.',
+            filetypes=[('HDF','.h5'),]
+        )
+        savedir, dataname = os.path.split(datapath)
+        savepath = os.path.join(savedir, '{}_unity_inputs.csv'.format(dataname[:-10]))
 
-    preproc_path = handheld_worldcam_preprocessing(datadir)
+        write_ego_inputs(datapath, savepath)
 
-    savepath = os.path.join(datadir, '{}_unity_inputs.csv'.format(preproc_path[:-10]))
 
-    write_unity_inputs(datadir, savepath)
+    elif args.method == 'gaze_inputs':
+
+        datapath = fm2p.select_file(
+            'Choose preprocessing file.',
+            filetypes=[('HDF','.h5'),]
+        )
+        savedir, dataname = os.path.split(datapath)
+        savepath = os.path.join(savedir, '{}_unity_inputs.csv'.format(dataname[:-10]))
+
+        write_gaze_inputs(datapath, savepath)
+
+
+    elif args.method == 'worldcam_preprocess':
+
+        datadir = fm2p.select_directory(
+            'Select data directory for handheld worldcam video.'
+        )
+
+        handheld_worldcam_preprocessing(datadir)
+
