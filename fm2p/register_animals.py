@@ -294,6 +294,11 @@ def align_novel_rec_to_ref():
         filetypes=[('HDF', '.h5'),]
     )
     novel_data = fm2p.read_h5(novel_composite_file)
+
+    novel_rec_dir = os.path.split(novel_composite_file)[0]
+    ref_tif_path = fm2p.find('*.tif', novel_rec_dir, MR=True)
+    am_mat_path = os.path.join(novel_rec_dir, 'additional_maps.mat')
+    vfs_mat_path = os.path.join(novel_rec_dir, 'VFS_maps.mat')
     
     if 'refimg' not in novel_data:
         raise ValueError("Novel file must contain 'refimg' key")
@@ -385,7 +390,20 @@ def align_novel_rec_to_ref():
           f"angle: {novel_angle:.1f}°, flipped: {novel_flipped}")
 
 
+def register_animals():
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-cr', '--create_ref', type=fm2p.str_to_bool, default=False)
+    args = parser.parse_args()
+
+
+    if args.create_ref is True:
+        create_shared_ref()
+
+    elif args.create_ref is False:
+        align_novel_rec_to_ref()
+
+
 if __name__ == '__main__':
 
-    align_novel_rec_to_ref()
-
+    register_animals()

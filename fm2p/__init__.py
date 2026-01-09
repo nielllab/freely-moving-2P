@@ -329,3 +329,11 @@ from .gaussian_STA_fit import (
     gaus_eval,
     gaussian_STA_fit
 )
+
+from .register_tiled_locations import (
+    register_tiled_locations
+)
+
+from .register_animals import (
+    register_animals
+)

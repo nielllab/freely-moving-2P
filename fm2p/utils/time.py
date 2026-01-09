@@ -381,11 +381,11 @@ def fmt_now(c=False):
         Will be 24-hour time
 
     """
-    str_date = datetime.today().strftime('%y%m%d')
+    str_date = datetime.datetime.today().strftime('%y%m%d')
 
-    h = datetime.today().strftime('%H')
-    m = datetime.today().strftime('%M')
-    s = datetime.today().strftime('%S')
+    h = datetime.datetime.today().strftime('%H')
+    m = datetime.datetime.today().strftime('%M')
+    s = datetime.datetime.today().strftime('%S')
     str_time = '{}h-{}m-{}s'.format(h,m,s)
 
     if c==True:
