@@ -4,6 +4,7 @@
 import os
 import numpy as np
 import argparse
+from tqdm import tqdm
 import math
 import tkinter as tk
 from tkinter import Button, messagebox
@@ -184,6 +185,7 @@ class AlignmentWindow:
     
     def run(self):
         """Show the alignment window and return the transform (x, y, angle, flipped)."""
+        
         root = tk.Tk()
         root.title("Align Novel Recording to Reference")
         
@@ -269,7 +271,14 @@ class AlignmentWindow:
                 float(self.current_angle),
                 bool(self.flipped),
             )
-            root.destroy()
+            try:
+                # stop the mainloop cleanly
+                root.quit()
+            except Exception:
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
         
         # Bindings
         canvas.bind("<ButtonPress-1>", on_button_press)
@@ -296,14 +305,22 @@ class AlignmentWindow:
         btn_accept = Button(root, text="Accept Alignment", command=accept_alignment)
         btn_accept.pack(side='left', padx=5, pady=5)
         
-        btn_quit = Button(root, text="Quit", command=root.destroy)
+        btn_quit = Button(root, text="Quit", command=lambda: root.quit())
         btn_quit.pack(side='left', padx=5, pady=5)
         
         # Display initial composite
         update_display()
         
-        root.mainloop()
-        
+        # run the Tk event loop; `accept_alignment` will call `root.quit()` to exit
+        try:
+            root.mainloop()
+        finally:
+            # ensure the window is destroyed after mainloop exits
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
         return self.transform
 
 
@@ -399,6 +416,8 @@ def align_novel_rec_to_ref():
     novel_rec_dir = os.path.split(novel_composite_file)[0]
     ref_tif_path = fm2p.find('*.tif', novel_rec_dir, MR=True)
     vfs_mat_path = os.path.join(novel_rec_dir, 'VFS_maps.mat')
+
+    print('  -> Loading novel images.')
     
     im = Image.open(ref_tif_path)
     img = np.array(im)
@@ -433,16 +452,20 @@ def align_novel_rec_to_ref():
     # convert to uint8 RGBA image array
     overlay_img = (jet_rgba * 255).astype(np.uint8)
     
+    print('  -> Launching alignment GUI.')
     # Create alignment window - show reference image with its overlay,
     # and allow user to align the novel image on top
     # Pass the reference overlay (from ref_data) and the novel overlay (from this recording)
     aligner = AlignmentWindow(ref_img, overlay_img, ref_overlay_arr=ref_overlay)
+
+    print('  -> Waiting for user to complete alignment...')
     transform = aligner.run()
     
     if transform is None:
         print("Alignment cancelled.")
         return
     
+    print('  -> Transform computed, applying to cell coordinates')
     novel_x, novel_y, novel_angle, novel_flipped = transform
     theta = math.radians(novel_angle)
     
@@ -450,7 +473,7 @@ def align_novel_rec_to_ref():
     # Expected structure: keys are position IDs, values are arrays with cell positions
     all_transformed_positions = {}
     
-    for pos_key, cell_array in novel_data.items():
+    for pos_key, cell_array in tqdm(novel_data.items()):
         if pos_key in ('refimg', 'overlay'):
             # Skip image data, only process coordinate arrays
             continue
@@ -501,6 +524,7 @@ def align_novel_rec_to_ref():
         
         all_transformed_positions[pos_key] = transformed_cells
     
+    print('  -> Adding reference overlay and image data to output')
     # Also include reference data so we have all recordings in one file
     for pos_key, cell_array in ref_data.items():
         if pos_key not in all_transformed_positions and pos_key not in ('refimg', 'overlay'):
@@ -517,7 +541,7 @@ def align_novel_rec_to_ref():
     
     # Print transform for reference
     print(f"Applied transform - x: {novel_x:.1f}, y: {novel_y:.1f}, "
-          f"angle: {novel_angle:.1f}°, flipped: {novel_flipped}")
+          f"angle: {novel_angle:.1f}deg, flipped: {novel_flipped}")
 
 
 def register_animals():
@@ -528,9 +552,11 @@ def register_animals():
 
 
     if args.create_ref is True:
+        print('  -> Creating shared reference that other recordings will align to.')
         create_shared_ref()
 
     elif args.create_ref is False:
+        print('  -> Aligning novel recording to shared reference.')
         align_novel_rec_to_ref()
 
 
