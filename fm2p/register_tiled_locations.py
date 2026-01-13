@@ -832,12 +832,12 @@ def overlay_registered_images(fullimg, small_images, transforms, scale_factor=1.
 
 def register_tiled_locations():
 
-    # fullimg_path = fm2p.select_file(
-    #     'Choose widefield template TIF.',
-    #     filetypes=[('TIF','.tif'), ('TIFF', '.tiff'), ]
-    # )
-    # fullimg_path = '/home/dylan/Fast0/Dropbox/_temp/250929_DMM056_signmap/250929_DMM056_signmap_refimg.tif'
-    fullimg_path = '/home/dylan/Fast0/Dropbox/_temp/251104_DMM066_signmap/map1_000001.tif'
+    fullimg_path = fm2p.select_file(
+        'Choose widefield template TIF.',
+        filetypes=[('TIF','.tif'), ('TIFF', '.tiff'), ]
+    )
+
+    animalID = os.path.split(os.path.split(fullimg_path)[0])[1]
 
     
     fullimg = np.array(Image.open(fullimg_path))
@@ -848,23 +848,13 @@ def register_tiled_locations():
         (newshape[1]/ fullimg.shape[1]),
     )
     resized_fullimg = zoom(fullimg, zoom=zoom_factors, order=1)
-    
-    # Properly downsample using PIL (np.resize repeats/truncates data)
-    # pil_full = Image.fromarray(fullimg, mode='L')
 
-
-    # pil_full_small = pil_full.resize((pil_full.width // 2, pil_full.height// 2), Image.LANCZOS)
-    # fullimg = np.array(pil_full_small)
-
-    # make list of numpy arrays for each position in order. will need to load
-    # in each preproc HDF file, then append
-    # animalID = fm2p.get_string_input(
-    #     'Animal ID to use as search key.'
-    # )
+    # cohort directory
+    cohort_dir = fm2p.select_directory('Select cohort directory (does not need to be just this animal).')
 
     smallimgs = []
     pos_keys = []
-    preproc_paths = fm2p.find('*DMM061*preproc.h5', '/home/dylan/Storage4/V1PPC_cohort02')
+    preproc_paths = fm2p.find('*{}*preproc.h5'.format(animalID), cohort_dir)
     entries = []
     for p in preproc_paths:
         main_key = os.path.split(os.path.split(os.path.split(p)[0])[0])[1]
@@ -883,6 +873,7 @@ def register_tiled_locations():
     for pos_num, pos_key, singlemap, p in entries:
         smallimgs.append(singlemap)
         pos_keys.append(pos_key)
+        
     # replace preproc_paths with the sorted order for later loops
     preproc_paths = [e[3] for e in entries]
 
@@ -896,7 +887,7 @@ def register_tiled_locations():
         transforms,
         scale_factor=0.27)
     
-    Image.fromarray(composite).save("composite_aligned_frames_v2.png")
+    Image.fromarray(composite).save("composite_aligned_frames_v1.png")
 
     all_global_positions = {}
 
@@ -915,7 +906,13 @@ def register_tiled_locations():
 
         all_global_positions[pos_key] = cell_positions
 
-    fm2p.write_h5(r'/home/dylan/Fast0/Dropbox/_temp/DMM061_aligned_composite_local_to_global_transform_v2.h5',  all_global_positions)
+    fm2p.write_h5(
+        os.path.join(
+            os.path.split(fullimg_path)[0],
+            '{}_aligned_composite_local_to_global_transform_v1.h5'.format(animalID)
+        ),
+        all_global_positions
+    )
 
 
 
