@@ -50,10 +50,10 @@ For sparse noise recordings, it will do the subset of these steps that makes sen
 
 A single .h5 file will be written in the directory of the recording with all preprocessed data.
 
-### Reverse correlation receptive fields
+### Sparse noise visual spike-triggered averages
 
-To map a spike triggered average receptive field for each cell, run 
+To map a spike-triggered average receptive field for each cell, run `python -m fm2p.sparse_noise_mapping -method splits -path /home/..../...preproc.h5`. Once the STAs are calculated, they are manually sorted into reliable/unreliable responses. Run `python -m fm2p.revieW_STAs` and select the "sparse_noise.h5" file for the desired recording. A window will open that has three panels. Left to right, they are: full STA, first split (i.e., half the data used to calculate an STA), second split. If it looks like a nice receptive field in the first panel and the two splits are in agreement with one another, press the right arrow key. Otherwise, press the left arrow key. Continue this until all cells are reviewed. Once completed, a gaussian will be fit to all of the real receptive fields and the properties will be saved out into the resulting ".npz" file.
 
+### Simple tuning curves for eye/head movement variables
 
-### Sparse noise mapping
-
+This code works for recordings with an IMU as well as those without an IMU.
