@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import os
-import argparse
 import numpy as np
 from tqdm import tqdm
-import itertools
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from scipy.ndimage import gaussian_filter
 
 import warnings
 warnings.filterwarnings('ignore')

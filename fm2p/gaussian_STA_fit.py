@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 
 import os
@@ -70,12 +71,7 @@ def fit_gauss(arr):
 
     # fit pos & neg gaussians
     pos_fit = fit_single_gaussian(x_pos, y_pos, is_positive=True)
-    # neg_fit = fit_single_gaussian(x_neg, y_neg, is_positive=False)
 
-    # return {
-    #     'positive': pos_fit,
-    #     'negative': neg_fit
-    # }
     return pos_fit
 
 
@@ -88,23 +84,10 @@ def gaus_eval(STA, STA1, STA2):
     # here, STA, STA1, etc. are the 2D STAs for a single cell, not a 3D
     # stack for all cells.
 
-    eval_results = {}
-
-    # for di, direc in enumerate(['positive','negative']):
-    # isresp = 0
-
-    # check 2d cross correlation with full STA
     corr = fm2p.corr2_coeff(STA1, STA2)
-    # gauss_eval = {
-    #     'corr2d': corr,
-    #     'isresp': int(corr > 0.1)
-    # }
 
-    # if corr > 0.1:
-    # isresp = 1
     gauss_eval = fit_gauss(np.abs(STA))
     gauss_eval['corr2d'] = corr
-    # gauss_eval['isresp'] = isresp
 
     return gauss_eval
 
@@ -114,8 +97,6 @@ def gaussian_STA_fit(sparse_noise_sta_path):
     data = fm2p.read_h5(sparse_noise_sta_path)
 
     STA = data['STA'].reshape(-1,768,1360)
-    # STA1 = data['STA1'].reshape(-1,768,1360)
-    # STA2 = data['STA2'].reshape(-1,768,1360)
 
     n_cells = np.size(STA, 0)
 
@@ -143,8 +124,6 @@ def gaussian_STA_fit(sparse_noise_sta_path):
     tilts = np.zeros([n_cells, 2]) * np.nan
 
     for c in range(len(params_output)):
-        # corr2d[c] = params_output[c]['corr2d']
-        # is_responsive[c] = params_output[c]['isresp']
         try:
             centroids[c,0] = params_output[c]['centroid'][0] # x
             centroids[c,1] = params_output[c]['centroid'][1] # y
@@ -180,3 +159,4 @@ if __name__ == '__main__':
     )
 
     gaussian_STA_fit(hdf_path)
+

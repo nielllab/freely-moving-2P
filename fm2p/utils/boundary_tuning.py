@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Boundary tuning analysis tools for freely-moving 2P experiments.
 
@@ -19,6 +20,7 @@ Example usage:
     >>> bt.identify_responses(use_angle='head')
     >>> print(bt.data_out['is_EBC'])
 
+Author: DMM, last modified Oct 2025
 """
 
 import numpy as np

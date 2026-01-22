@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+Register multiple animals to one template animal.
+
+Author: DMM, last modified Jan 2026
+"""
 
 
 import os
@@ -17,30 +22,7 @@ from matplotlib.colors import ListedColormap
 import fm2p
 
 
-def array_to_pil(arr):
-    if isinstance(arr, Image.Image):
-        return arr
 
-    a = np.asarray(arr)
-    if a.dtype != np.uint8:
-        # norm to 0-255
-        try:
-            amin = float(np.nanmin(a))
-            amax = float(np.nanmax(a))
-        except Exception:
-            amin, amax = 0.0, 1.0
-        if amax == amin:
-            a = np.zeros_like(a, dtype=np.uint8)
-        else:
-            a = ((a - amin) / (amax - amin) * 255.0).astype(np.uint8)
-
-    if a.ndim == 2:
-        return Image.fromarray(a, mode='L')
-    if a.ndim == 3 and a.shape[2] == 3:
-        return Image.fromarray(a, mode='RGB')
-    if a.ndim == 3 and a.shape[2] == 4:
-        return Image.fromarray(a, mode='RGBA')
-    return Image.fromarray(a)
 
 
 def _wheel_step_from_event(event, scale=2.0):
@@ -58,12 +40,12 @@ def _wheel_step_from_event(event, scale=2.0):
         return float(scale)
     if num == 5:
         return float(-scale)
-
     return 0.0
 
 
 class AlignmentWindow:
-    """Aligning a novel recording overlay to a reference image."""
+    """ Align novel recording overlay to a reference image.
+    """
     
     def __init__(self, ref_img_arr, novel_img_arr, ref_overlay_arr=None):
         """
@@ -76,10 +58,10 @@ class AlignmentWindow:
         self.novel_img_arr = novel_img_arr
         self.ref_overlay_arr = ref_overlay_arr
         
-        self.ref_img_pil = array_to_pil(ref_img_arr).convert('RGB')
+        self.ref_img_pil = fm2p.array_to_pil(ref_img_arr).convert('RGB')
 
         if ref_overlay_arr is not None:
-            self.ref_overlay_pil = array_to_pil(ref_overlay_arr).convert('RGBA')
+            self.ref_overlay_pil = fm2p.array_to_pil(ref_overlay_arr).convert('RGBA')
         else:
             self.ref_overlay_pil = None
 
@@ -106,32 +88,33 @@ class AlignmentWindow:
                 jet[..., 3] = np.clip(alpha_mask, 0.0, 1.0)
 
                 rgba = (jet * 255).astype(np.uint8)
-                self.novel_overlay_pil = array_to_pil(rgba).convert('RGBA')
+                self.novel_overlay_pil = fm2p.array_to_pil(rgba).convert('RGBA')
             elif novel_arr.ndim == 3 and novel_arr.shape[2] == 3:
 
                 rgb = (novel_arr * 255).astype(np.uint8) if novel_arr.dtype != np.uint8 else novel_arr
                 alpha = (np.ones((rgb.shape[0], rgb.shape[1]), dtype=np.uint8) * int(255 * self.alpha_value))
                 rgba = np.dstack([rgb, alpha])
-                self.novel_overlay_pil = array_to_pil(rgba).convert('RGBA')
+                self.novel_overlay_pil = fm2p.array_to_pil(rgba).convert('RGBA')
             elif novel_arr.ndim == 3 and novel_arr.shape[2] == 4:
 
                 rgba = novel_arr.copy()
                 if rgba.dtype != np.uint8:
                     rgba = (rgba * 255).astype(np.uint8)
                 rgba[..., 3] = (rgba[..., 3].astype(float) * self.alpha_value).astype(np.uint8)
-                self.novel_overlay_pil = array_to_pil(rgba).convert('RGBA')
+                self.novel_overlay_pil = fm2p.array_to_pil(rgba).convert('RGBA')
             else:
-                # fallback: convert and ensure RGBA
-                self.novel_overlay_pil = array_to_pil(novel_img_arr).convert('RGBA')
+                # ensure RGBA
+                self.novel_overlay_pil = fm2p.array_to_pil(novel_img_arr).convert('RGBA')
         except Exception:
-            # on any failure, create a transparent placeholder
+            # or make transparent placeholder
             self.novel_overlay_pil = Image.new('RGBA', (self.ref_img_pil.width, self.ref_img_pil.height), (0, 0, 0, 0))
 
-        # the transform that will be returned
         self.transform = None
         
+
     def _create_composite_image(self):
-        """Create composite of reference + novel with current transform applied."""
+        """ Create composite of reference + novel with transform applied.
+        """
 
         width, height = self.ref_img_pil.width, self.ref_img_pil.height
         composite = Image.new('RGBA', (width, height), (0, 0, 0, 0))
@@ -161,8 +144,12 @@ class AlignmentWindow:
         
         return composite
     
+
     def run(self):
-        """Show the alignment window and return the transform (x, y, angle, flipped)."""
+        """ Show alignment win & ret transform.
+        
+        Returns as (x, y, angle, flipped)
+        """
         
         root = tk.Tk()
         root.title("Align Novel Recording to Reference")
@@ -171,8 +158,9 @@ class AlignmentWindow:
                           height=self.ref_img_pil.height)
         canvas.pack()
         
-        # disp init composite
+
         def update_display():
+            # disp init composite
             # if root destroyed, skip update
             try:
                 if not root.winfo_exists():
@@ -202,11 +190,13 @@ class AlignmentWindow:
         
         drag_start = {'pos': None}
         
+
         def on_button_press(event):
 
             drag_start['pos'] = np.array([event.x, event.y], dtype=float)
             drag_start['mode'] = 'novel' if getattr(event, 'num', 1) == 1 else 'ref'
         
+
         def on_drag_motion(event):
             if drag_start.get('pos') is None:
                 drag_start['pos'] = np.array([event.x, event.y], dtype=float)
@@ -216,17 +206,18 @@ class AlignmentWindow:
             delta = current - drag_start['pos']
 
             if drag_start.get('mode') == 'ref':
-                # pan the reference image and its overlay together
+                # pan ref img and overlay together
                 self.ref_offset += delta
-                # also move the novel overlay (visual) with the reference so they stay aligned
+                # also move novel overlay so they stay aligned.
                 self.current_offset += delta
             else:
-                # move only the novel overlay
+                # move only novel overlay
                 self.current_offset += delta
 
             drag_start['pos'] = current
             update_display()
         
+
         def on_button_release(event):
 
             drag_start.update({'pos': None})
@@ -241,17 +232,20 @@ class AlignmentWindow:
             except Exception:
                 print("Test transform -> (unable to read current transform)")
 
+
         def on_mouse_wheel(event):
             step = _wheel_step_from_event(event, scale=2.0)
             if step != 0.0:
                 self.current_angle = (self.current_angle + step) % 360.0
                 update_display()
         
+
         def toggle_flip():
             self.flipped = not self.flipped
             btn_flip.config(relief='sunken' if self.flipped else 'raised')
             update_display()
         
+
         def accept_alignment():
             self.transform = (
                 float(self.current_offset[0]),
@@ -301,7 +295,7 @@ class AlignmentWindow:
         # disp init composite
         update_display()
         
-        # run the Tk event loop
+        # run Tk event loop
         try:
             root.mainloop()
         finally:
@@ -315,6 +309,10 @@ class AlignmentWindow:
 
 
 def create_shared_ref(wf_dir=None):
+    # Use my best widefield map as a template for all other animals. This makes the
+    # template file from that best recording. Need tif stack and the VFS maps from
+    # kevin's sign mapping code. Saves this out, then this needs to be loaded back in
+    # when aligning novel animals to the template.
 
     if wf_dir is None:
         wf_dir = fm2p.select_directory(
@@ -368,8 +366,8 @@ def create_shared_ref(wf_dir=None):
 
 
 def align_novel_rec_to_ref():
-    """Align a novel recording to a shared reference and transform cell coordinates.
-    """
+    # Align novel recording to the shared ref map. Then go throguh each cell and
+    # transform cell coordinates from animal to shared coordinates.
     
     ref_composite_file = fm2p.select_file(
         'Select animal reference file (with global coordinates).',
@@ -540,3 +538,4 @@ def register_animals():
 if __name__ == '__main__':
 
     register_animals()
+

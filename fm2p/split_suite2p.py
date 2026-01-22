@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+
+
 # split one suite2p output into two directories based on the length of the first tif stack
 
 from PIL import Image

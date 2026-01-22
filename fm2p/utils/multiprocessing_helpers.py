@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+
+
 
 import numpy as np
 from multiprocessing import Pool, cpu_count, shared_memory
