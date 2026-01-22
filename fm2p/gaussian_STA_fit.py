@@ -32,7 +32,7 @@ def fit_gauss(arr):
         return g + B + tilt
 
     def fit_single_gaussian(initial_x0, initial_y0, is_positive=True):
-        """Fit a Gaussian around a given initial center.\
+        """ Fit gaussian around init center
         """
         A0 = (arr.max() - arr.min()) * (1 if is_positive else -1)
         B0 = np.median(arr)
@@ -114,8 +114,8 @@ def gaussian_STA_fit(sparse_noise_sta_path):
     data = fm2p.read_h5(sparse_noise_sta_path)
 
     STA = data['STA'].reshape(-1,768,1360)
-    STA1 = data['STA1'].reshape(-1,768,1360)
-    STA2 = data['STA2'].reshape(-1,768,1360)
+    # STA1 = data['STA1'].reshape(-1,768,1360)
+    # STA2 = data['STA2'].reshape(-1,768,1360)
 
     n_cells = np.size(STA, 0)
 
@@ -133,12 +133,9 @@ def gaussian_STA_fit(sparse_noise_sta_path):
             results.append(res)
             pbar.update()
             
-        param_mp = [pool.apply_async(gaus_eval, args=(STA[c], STA1[c], STA2[c]), callback=collect) for c in range(n_cells)]
+        param_mp = [pool.apply_async(fit_gauss, args=(STA[c]), callback=collect) for c in range(n_cells)]
         params_output = [result.get() for result in param_mp] # returns list of tuples
 
-
-    is_responsive = np.zeros([n_cells]) * np.nan # 0=neg, 1=pos
-    corr2d = np.zeros([n_cells]) * np.nan
     centroids = np.zeros([n_cells, 2]) * np.nan
     amplitudes = np.zeros([n_cells]) * np.nan
     baselines = np.zeros([n_cells]) * np.nan
@@ -146,8 +143,8 @@ def gaussian_STA_fit(sparse_noise_sta_path):
     tilts = np.zeros([n_cells, 2]) * np.nan
 
     for c in range(len(params_output)):
-        corr2d[c] = params_output[c]['corr2d']
-        is_responsive[c] = params_output[c]['isresp']
+        # corr2d[c] = params_output[c]['corr2d']
+        # is_responsive[c] = params_output[c]['isresp']
         try:
             centroids[c,0] = params_output[c]['centroid'][0] # x
             centroids[c,1] = params_output[c]['centroid'][1] # y
@@ -163,21 +160,23 @@ def gaussian_STA_fit(sparse_noise_sta_path):
 
     pool.close()
 
-    savepath = os.path.join(os.path.split(sparse_noise_sta_path)[0], 'has_sparse_noise_STAs.npz')
+    savepath = os.path.join(os.path.split(sparse_noise_sta_path)[0], 'has_sparse_noise_STAs_v2.npz')
     print('Saving {}'.format(savepath))
     np.savez(
         savepath,
-        corr2d=corr2d,
         centroids=centroids,
         amplitudes=amplitudes,
         baselines=baselines,
         sigmas=sigmas,
-        tilts=tilts,
-        is_responsive=is_responsive # this is more so if it's reliable, not if its responsive... comparison between two halves
+        tilts=tilts
     )
 
 
+if __name__ == '__main__':
 
+    hdf_path = fm2p.select_file(
+        'Select sparse noise preproc file.',
+        [('HDF', '.h5'),]
+    )
 
-
-    
+    gaussian_STA_fit(hdf_path)

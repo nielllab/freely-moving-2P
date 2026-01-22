@@ -805,8 +805,19 @@ def run_all_GLMs(preproc_path):
         dPhi = np.roll(dPhi, -2)
         data['dPhi'] = dPhi
 
-    if 'dTheta' not in data.keys():
+    if 'dTheta' not in data.keys() and 'dEye' not in data.keys():
+        theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
+        dTheta  = np.diff(fm2p.interp_short_gaps(theta_full, 5)) / np.diff(eyeT)
+        dTheta = np.roll(dTheta, -2)
+        data['dTheta'] = dTheta
+
+        t = eyeT.copy()[:-1]
+        t1 = t + (np.diff(eyeT) / 2)
+        data['eyeT1'] = t1
+
+    elif 'dTheta' not in data.keys():
         data['dTheta'] = data['dEye'].copy()
+
 
     # interpolate dEye values to twop data
     dTheta = fm2p.interp_short_gaps(data['dTheta'])
@@ -818,40 +829,56 @@ def run_all_GLMs(preproc_path):
 
     ltdk = data['ltdk_state_vec'].copy()
 
-    gaze = np.cumsum(data['dGaze'].copy())
-    dGaze = data['dGaze'].copy()
-    gazeT = data['eyeT_trim'] + (np.nanmedian(data['eyeT_trim']) / 2)
-    gazeT = gazeT[:-1]
-    gaze = fm2p.interpT(gaze, gazeT, data['twopT'])
-    dGaze = fm2p.interpT(dGaze, gazeT, data['twopT'])
+    if 'dGaze' in data.keys():
+        hasIMU = True
+    else:
+        hasIMU = False
 
-    # at some point, add in accelerations
-    behavior_vars = {
-        # head positions
-        'yaw': data['head_yaw_deg'].copy(),
-        'pitch': data['pitch_twop_interp'].copy(),
-        'roll': data['roll_twop_interp'].copy(),
-        # gaze
-        'gaze': gaze,
-        'dGaze': dGaze,
-        # eye positions
-        'theta': data['theta_interp'].copy(),
-        'phi': data['phi_interp'].copy(),
-        # eye speeds
-        'dTheta': dTheta,
-        'dPhi': dPhi,
-        # head angular rotation speeds
-        'gyro_x': data['gyro_x_twop_interp'].copy(),
-        'gyro_y': data['gyro_y_twop_interp'].copy(),
-        'gyro_z': data['gyro_z_twop_interp'].copy(),
-        # head accelerations
-        'acc_x': data['acc_x_twop_interp'].copy(),
-        'acc_y': data['acc_y_twop_interp'].copy(),
-        'acc_z': data['acc_z_twop_interp'].copy()
-    }
+    if hasIMU:
+        gaze = np.cumsum(data['dGaze'].copy())
+        dGaze = data['dGaze'].copy()
+        gazeT = data['eyeT_trim'] + (np.nanmedian(data['eyeT_trim']) / 2)
+        gazeT = gazeT[:-1]
+        gaze = fm2p.interpT(gaze, gazeT, data['twopT'])
+        dGaze = fm2p.interpT(dGaze, gazeT, data['twopT'])
 
-    if len(behavior_vars['yaw']) > len(data['norm_spikes']):
-        behavior_vars['yaw'] = behavior_vars['yaw'][:-1]
+        behavior_vars = {
+            # head positions
+            'yaw': data['head_yaw_deg'].copy(),
+            'pitch': data['pitch_twop_interp'].copy(),
+            'roll': data['roll_twop_interp'].copy(),
+            # gaze
+            'gaze': gaze,
+            'dGaze': dGaze,
+            # eye positions
+            'theta': data['theta_interp'].copy(),
+            'phi': data['phi_interp'].copy(),
+            # eye speeds
+            'dTheta': dTheta,
+            'dPhi': dPhi,
+            # head angular rotation speeds
+            'gyro_x': data['gyro_x_twop_interp'].copy(),
+            'gyro_y': data['gyro_y_twop_interp'].copy(),
+            'gyro_z': data['gyro_z_twop_interp'].copy(),
+            # head accelerations
+            'acc_x': data['acc_x_twop_interp'].copy(),
+            'acc_y': data['acc_y_twop_interp'].copy(),
+            'acc_z': data['acc_z_twop_interp'].copy()
+        }
+
+        if len(behavior_vars['yaw']) > len(data['norm_spikes']):
+            behavior_vars['yaw'] = behavior_vars['yaw'][:-1]
+
+    elif not hasIMU:
+
+        behavior_vars = {
+            # eye positions
+            'theta': data['theta_interp'].copy(),
+            'phi': data['phi_interp'].copy(),
+            # eye speeds
+            'dTheta': dTheta,
+            'dPhi': dPhi
+        }
 
     dict_out = {}
 
@@ -868,13 +895,21 @@ def run_all_GLMs(preproc_path):
             for use_lightperiods in range(2):
 
                 if not use_dFF:
+
                     X = data['norm_spikes'].copy()
                     dFF_key = 'sps'
+
                 elif use_dFF:
-                    X = data['denoised_dFF'].copy()
+
+                    if 'denoised_dFF' in data.keys():
+                        X = data['denoised_dFF'].copy()
+                    else:
+                        X = data['raw_dFF'].copy()
+
                     for c in range(np.size(X, 0)):
                         X[c,:] = X[c,:] - np.nanmin(X[c,:])
                         X[c,:] = X[c,:] / np.nanmax(X[c,:])
+                        
                     dFF_key = 'dff'
 
                 y = behavior_v.copy()[np.newaxis, :]

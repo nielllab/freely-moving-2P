@@ -1,24 +1,26 @@
+# -*- coding: utf-8 -*-
+""" review_STAs.py
 
+After spike-triggered averages (STA) have been calculated, this script is run to
+review the resulting maps. Panels (from left to right) are the STA calculated
+from the entire recording followed by two panels of an STA calculated on shuffled
+halves of the data. 
+
+"""
+
+
+import os
+import argparse
+import numpy as np
 from PIL import Image, ImageTk
 import tkinter as tk
 from matplotlib import cm
-import argparse
-
-import os
-import numpy as np
-from tqdm import tqdm
-import multiprocessing
-from scipy.optimize import curve_fit
 
 import fm2p
 
 
 def label_and_fit_gui(STA, STA1, STA2, out_path=None):
-    """Interactive GUI to label STA pages and run gaus_eval on positives.
-
-    STA, STA1, STA2: 3D numpy arrays shaped (n_pages, H, W)
-    float_value: additional float to display in title
-    out_path: path to save results (.npz). If None, saved to './label_results.npz'
+    """ GUI to label STA pages and run gaus_eval on STAs flagged as pos
     """
     n = STA.shape[0]
     # queue of indices to visit
@@ -68,15 +70,13 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
         btn_frame.pack(side='top', fill='x')
 
         def update_title(cur_pos, float_value):
-            # Print progress/title to terminal, overwriting previous line
             labeled = np.sum(labels != -1)
             title_str = f'Progress: {labeled+1}/{n}    corr2d: {float_value:.4f}    index: {cur_pos+1}/{len(queue)}'
             print('\r' + title_str, end='', flush=True)
 
         def make_image_from_array(arr):
-            # normalize and map through jet
+
             a = np.asarray(arr).astype(float)
-            # center colormap at zero: normalize symmetrically so 0 -> 0.5 (middle of colormap)
             amin = np.nanmin(a)
             amax = np.nanmax(a)
             max_abs = max(abs(amin), abs(amax))
@@ -85,11 +85,10 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
             else:
                 norm = (a + max_abs) / (2.0 * max_abs)
 
-            # use coolwarm colormap
             rgba = (cm.get_cmap('coolwarm')(norm) * 255).astype(np.uint8)
             im = Image.fromarray(rgba)
 
-            # scale down to 0.25 of original size
+            # scale to 0.25 of init sz
             w, h = im.size
             nw = max(1, int(round(w * 0.25)))
             nh = max(1, int(round(h * 0.25)))
@@ -97,13 +96,11 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
             return im
 
         cur_idx_ptr = 0
-        # store previous displayed indices to detect unexpected repeats across pages
         prev_display = {'idx': None}
 
         def show_current():
             nonlocal cur_idx_ptr
             if cur_idx_ptr >= len(queue):
-                # finished
                 root.quit()
                 return
             
@@ -143,7 +140,6 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
             idx = queue.pop(cur_idx_ptr)
             queue.append(idx)
             history.append(('skip', idx, cur_idx_ptr))
-            # show same cur_idx_ptr (now new item at this position)
             show_current()
 
         def do_back():
@@ -154,14 +150,12 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
             if action[0] == 'mark':
                 _, idx, prev = action
                 labels[idx] = prev
-                # set current pointer to this item's position
                 try:
                     cur_idx_ptr = queue.index(idx)
                 except ValueError:
                     cur_idx_ptr = 0
             elif action[0] == 'skip':
                 _, idx, old_pos = action
-                # remove last element (should be idx) and insert back
                 if queue and queue[-1] == idx:
                     queue.pop()
                     queue.insert(old_pos, idx)
@@ -191,14 +185,11 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
         show_current()
         root.mainloop()
 
-    # After GUI done (or if we skipped review), compute fraction true
-    # If any items remain unlabeled, leave them as -1; consider them false
     labeled_mask = labels != -1
     frac_true = np.sum(labels == 1) / float(n)
-    print()  # finish the overwritten progress line
+    print()
     print(f'Fraction labeled true: {frac_true:.4f} ({np.sum(labels==1)}/{n})')
 
-    # Run gaus_eval on positive-labeled cells and collect numeric arrays
     true_indices = np.where(labels == 1)[0]
     m = len(true_indices)
 
@@ -210,7 +201,7 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
     pos_sigmas = np.full((m, 2), np.nan)
     pos_tilts = np.full((m, 2), np.nan)
 
-    print('Fitting gaussian to good cells.')
+    print('  -> Fitting gaussian to good cells.')
 
     for i, idx in enumerate(true_indices):
         print(f'\rEvaluating {i+1}/{m} (cell index {idx})', end='', flush=True)
@@ -228,7 +219,6 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
         pos_tilts[i, 0] = pt[0]
         pos_tilts[i, 1] = pt[1]
 
-    # finish prog ln
     print()
 
     if out_path is None:
@@ -250,17 +240,34 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
     print(f'Saved labeling and numeric results to: {out_path}')
 
 
-if __name__ == '__main__':
+def review_STAs():
 
-    sn_path = fm2p.select_file(
-        'Select sparse noise receptive field HDF file.',
-        filetypes=[('HDF','.h5'),]
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-sn', '--sn_path', type=str)
+    args = parser.parse_args()
+
+
+    if args.sn_path is None:
+        sn_path = fm2p.select_file(
+            'Select sparse noise receptive field HDF file.',
+            filetypes=[('HDF','.h5'),]
+        )
+    else:
+        sn_path = args.sn_path
 
     pathout = os.path.join(os.path.split(sn_path)[0], 'sparse_noise_labels_gaussfit.npz')
 
     data = fm2p.read_h5(sn_path)
-    STA = data['STA'].reshape(-1, 768, 1360)
+
+    STA = data['STA'].reshape(-1, 768, 1360) # expected shape of stim array / STAs
     STA1 = data['STA1'].reshape(-1, 768, 1360)
     STA2 = data['STA2'].reshape(-1, 768, 1360)
+
     label_and_fit_gui(STA, STA1, STA2, out_path=pathout)
+
+
+if __name__ == '__main__':
+
+    review_STAs
+
+    
