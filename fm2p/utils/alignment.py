@@ -41,42 +41,27 @@ def align_eyecam_using_TTL(eye_dlc_h5, eye_TS_csv, eye_TTLV_csv, eye_TTLTS_csv, 
         End index of the aligned eyecam data.
     """
 
-    # Read in the DLC data
     if eye_dlc_h5 is not None:
         pts, _ = fm2p.open_dlc_h5(eye_dlc_h5)
         num_frames = pts['t_x'].size
     else:
         num_frames = None
 
-    # Read in the timestamps for each video frame
     eyeT = fm2p.read_timestamp_file(eye_TS_csv, position_data_length=num_frames)
 
-    # Read in the TTL voltages
     ttlV = pd.read_csv(eye_TTLV_csv, encoding='utf-8', engine='c', header=None).squeeze().to_numpy()
 
-    # Read in the timestamps for each TTL voltage reading
+    # read in the timestamps for each TTL voltage reading
     ttlT_series = pd.read_csv(eye_TTLTS_csv, encoding='utf-8', engine='c', header=None).squeeze()
     ttlT = fm2p.read_timestamp_series(ttlT_series)
 
     if len(ttlV) != len(ttlT):
         print('Warning! Length of TTL voltages ({}) does not match the length of TTL timestamps ({}).'.format(len(ttlV), len(ttlT)))
 
-    # Get start and stop index from TTL data
+    # get start and stop index from TTL data
     startInd = int(np.argwhere(ttlV>0)[0])
     endInd = int(np.argwhere(ttlV>0)[-1])
 
-    # Get the first and last video frame for which enough points (probably 7, depending on the config
-    # file options) were tracked to fit an ellipse to the pupil.
-    # reye_cam = fm2p.Eyecam('', '', cfg)
-    # reye_cam.add_files(
-    #     eye_dlc_h5=eye_dlc_h5,
-    #     eye_avi='',
-    #     eyeT=eye_TS_csv
-    # )
-    # eye_xyl, ellipse_dict = reye_cam.track_pupil()
-    # # Use theta as the measure of this, but using other params (e.g., phi, centroid) would be equivilent
-    # theta = ellipse_dict['theta']
-    
     if theta is not None:
         firstTheta = int(np.argwhere(~np.isnan(theta))[0])
         lastTheta = int(np.argwhere(~np.isnan(theta))[-1])
@@ -85,11 +70,11 @@ def align_eyecam_using_TTL(eye_dlc_h5, eye_TS_csv, eye_TTLV_csv, eye_TTLTS_csv, 
             print('Theta: ', eyeT[firstTheta], ' to ', eyeT[lastTheta])
             print('TTL: ', ttlT[startInd], ' to ', ttlT[endInd])
 
-    # Use the TTL timestamps to get the onset
+    # use the TTL timestamps to get the onset
     apply_t0 = ttlT[startInd]
     apply_tEnd = ttlT[endInd]
 
-    # Find the closest timestamps in the eyecam data to the TTL timestamps
+    # find the closest timestamps in the eyecam data to the TTL timestamps
     eyeStart, _ = fm2p.find_closest_timestamp(eyeT, apply_t0)
     eyeEnd, _ = fm2p.find_closest_timestamp(eyeT, apply_tEnd)
 
@@ -98,6 +83,17 @@ def align_eyecam_using_TTL(eye_dlc_h5, eye_TS_csv, eye_TTLV_csv, eye_TTLTS_csv, 
 
 
 def align_lightdark_using_TTL(ltdk_TTL_path, ltdk_TS_path, eyeT, twopT, eyeStart, eyeEnd):
+    """
+    Docstring for align_lightdark_using_TTL
+    
+    :param ltdk_TTL_path: Description
+    :param ltdk_TS_path: Description
+    :param eyeT: Description
+    :param twopT: Description
+    :param eyeStart: Description
+    :param eyeEnd: Description
+    """
+
     # this needs to be the version of eyeT that is NOT already cropped to the
     # start/end of the recording and NOT with T0 subtracted (still in
     # absoluite time).
@@ -177,6 +173,8 @@ def align_lightdark_using_TTL(ltdk_TTL_path, ltdk_TS_path, eyeT, twopT, eyeStart
 
 
 def align_crop_IMU(df, imuT, apply_t0, apply_tEnd, eyeT, twopT):
+    """
+    """
 
     outputs = {}
 

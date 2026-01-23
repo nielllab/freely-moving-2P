@@ -11,7 +11,7 @@ Functions:
 Example usage:
     $ python deinter_dir.py
 
-Author: DMM, June 2025
+Author: DMM, lat modified June 2025
 """
 
 import os

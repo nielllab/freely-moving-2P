@@ -2,7 +2,7 @@
 """
 Preprocessing and analysis for freely moving two-photon data.
 
-DMM, 2024-2025
+Author: DMM, written 2024-2026
 """
 
 __version__ = "0.1"
@@ -29,7 +29,8 @@ from .utils.helper import (
     angular_diff_deg,
     step_interp,
     bootstrap_stderr,
-    interp_short_gaps_circ
+    interp_short_gaps_circ,
+    array_to_pil
 )
 
 from .utils.linalg import (

@@ -18,6 +18,7 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+from PIL import Image
 
 import fm2p
 
@@ -493,3 +494,32 @@ def bootstrap_stderr(data, n_boot=5000):
     se = np.std(boot_medians, ddof=1)
 
     return se
+
+
+def array_to_pil(arr):
+    """ Convert np array to PIL image. Mostly to get it into uint8 fmt.
+    """
+
+    if isinstance(arr, Image.Image):
+        return arr
+
+    a = np.asarray(arr)
+    if a.dtype != np.uint8:
+        # norm to 0-255
+        try:
+            amin = float(np.nanmin(a))
+            amax = float(np.nanmax(a))
+        except Exception:
+            amin, amax = 0.0, 1.0
+        if amax == amin:
+            a = np.zeros_like(a, dtype=np.uint8)
+        else:
+            a = ((a - amin) / (amax - amin) * 255.0).astype(np.uint8)
+
+    if a.ndim == 2:
+        return Image.fromarray(a, mode='L')
+    if a.ndim == 3 and a.shape[2] == 3:
+        return Image.fromarray(a, mode='RGB')
+    if a.ndim == 3 and a.shape[2] == 4:
+        return Image.fromarray(a, mode='RGBA')
+    return Image.fromarray(a)

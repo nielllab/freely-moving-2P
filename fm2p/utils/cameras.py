@@ -19,7 +19,7 @@ compute_camera_distortion(video_path, savepath, boardw=9, boardh=6)
 undistort_video(video_path, npz_path)
     Correct distortion by applying calibration matrix to a novel video.
 
-Author: DMM, 2024
+Author: DMM, last modified 2024
 """
 
 

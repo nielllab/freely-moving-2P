@@ -1,8 +1,12 @@
+# -*- coding: utf-8 -*-
+
+
+
+
 import numpy as np
 import pandas as pd
 import fm2p
 import os
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 

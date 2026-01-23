@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
+Register tiled locations to a full animal vasculature from widefield image.
 
-
-Author: DMM, Dec. 2025
+Author: DMM, last modified Jan 2026
 """
 
 
@@ -19,32 +19,6 @@ from scipy.ndimage import zoom
 import fm2p
 
 
-def array_to_pil(arr):
-    if isinstance(arr, Image.Image):
-        return arr
-
-    a = np.asarray(arr)
-    if a.dtype != np.uint8:
-        # norm to 0-255
-        try:
-            amin = float(np.nanmin(a))
-            amax = float(np.nanmax(a))
-        except Exception:
-            amin, amax = 0.0, 1.0
-        if amax == amin:
-            a = np.zeros_like(a, dtype=np.uint8)
-        else:
-            a = ((a - amin) / (amax - amin) * 255.0).astype(np.uint8)
-
-    if a.ndim == 2:
-        return Image.fromarray(a, mode='L') # will actually use
-    if a.ndim == 3 and a.shape[2] == 3:
-        return Image.fromarray(a, mode='RGB')
-    if a.ndim == 3 and a.shape[2] == 4:
-        return Image.fromarray(a, mode='RGBA')
-    return Image.fromarray(a)
-
-
 class ManualImageAligner:
     def __init__(self, fullimg, small_images, position_keys, scale_factor=1.0):
         """
@@ -54,13 +28,12 @@ class ManualImageAligner:
         """
         self.fullimg_arr = fullimg
 
-        # keep a consistent RGBA base img
-        self.fullimg_pil = array_to_pil(fullimg).convert('RGBA')
+        self.fullimg_pil = fm2p.array_to_pil(fullimg).convert('RGBA')
         self.base_image = self.fullimg_pil.copy()
         self.position_keys = position_keys
 
         self.small_imgs_arr = small_images
-        self.small_imgs_pil = [array_to_pil(img).convert('RGBA') for img in small_images]
+        self.small_imgs_pil = [fm2p.array_to_pil(img).convert('RGBA') for img in small_images]
 
         self.scale_factor = scale_factor
 
@@ -75,42 +48,42 @@ class ManualImageAligner:
         self.current_offset = np.array([50, 50], float)
         self.debug_wheel = False
 
+
     def _wheel_step_from_event(self, event, scale=2.0):
-        """ Normalize a mouse wheel event to a rotation step in degrees.
+        """ Norm mouse wheel event to rotation step in deg.
         """
-        # prefer event.delta when present
         delta = getattr(event, 'delta', None)
         if delta is not None and delta != 0:
-            # delta on Windows often in multiples of 120 per notch.
             try:
                 d = float(delta)
                 if abs(d) >= 1.0:
-                    return (d / 120.0) * scale
-                # small fractional deltas (smooth scrolling) -> preserve sign
+                    return (d / 120.0) * scale # 120 bc windows
+                # small fractionals
                 return math.copysign(scale, d)
             except Exception:
                 return 0.0
 
-        # fallback to event.num used on X11: 4=up,5=down
         num = getattr(event, 'num', None)
-        if num == 4:
+        if num == 4: # up
             return float(scale)
-        if num == 5:
+        if num == 5: # DOwn
             return float(-scale)
 
         return 0.0
 
 
     def choose_scale_factor(self, fullimg_arr, small_images, start_idx=0):
-        """ Resize a single tile overalid on full WF img, then save out scale factor
+        """ Resize single tile overalid on full WF img, then save out scale factor
         """
-        full_pil = array_to_pil(fullimg_arr)
+        full_pil = fm2p.array_to_pil(fullimg_arr)
         full_rgba = full_pil.convert('RGBA')
 
         self.preview_idx = int(start_idx)
-        print('Displaying stitching position: {}'.format(self.position_keys[self.preview_idx]))
+        print('Displaying stitching position: {}'.format(
+            self.position_keys[self.preview_idx])
+        )
         small_pil_holder = {
-            'pil': array_to_pil(small_images[self.preview_idx]),
+            'pil': fm2p.array_to_pil(small_images[self.preview_idx]),
             'angle': 0.0,
             'offset': np.array([0.0, 0.0]),
         }
@@ -173,7 +146,9 @@ class ManualImageAligner:
             cur = np.array([event.x, event.y], dtype=float)
             delta = cur - canvas._drag_start
             canvas._drag_start = cur
-            small_pil_holder['offset'] = small_pil_holder.get('offset', np.array([0.0, 0.0])) + delta
+            small_pil_holder['offset'] = small_pil_holder.get(
+                'offset', np.array([0.0, 0.0])
+            ) + delta
             draw_small()
 
         def _rotate_event(event):
@@ -199,7 +174,8 @@ class ManualImageAligner:
         # scale slider at bottom
         # TODO: never going to be greater than 1, so could set max to 1...?
         scale_slider = Scale(
-            win, from_=0.05, to=1.5, resolution=0.01,
+            win, from_=0.05, to=1.5, resolution=0.01, # started as ~3 or something like that.
+            # it's usually 0.27, so i should change it to have max of 0.5. Need to test first.
             orient=HORIZONTAL, label="Scale Factor",
             length=1000,
             command=lambda v: update_scale(float(v)))
@@ -233,6 +209,7 @@ class ManualImageAligner:
         canvas.bind("<Button-4>", _rotate_linux)
         canvas.bind("<Button-5>", _rotate_linux)
 
+
         def accept():
             self.scale_factor = scale_factor_local[0]
             self.index = int(self.preview_idx)
@@ -242,6 +219,7 @@ class ManualImageAligner:
 
         Button(win, text="Accept Scale", command=accept).pack()
 
+
         def pick_random():
             if len(small_images) <= 1:
                 return
@@ -249,28 +227,24 @@ class ManualImageAligner:
             # if that one isn't a good tile, choose a new random one that will be easier to tell correct scale.
             # usually seems to be 0.27 as best scale factor. maybe start with that as default?
             tries = 0
-            while new_idx == self.preview_idx and tries < 10:
+            while new_idx == self.preview_idx and tries < 10: # why'd I create a limit on tries?
                 new_idx = random.randrange(len(small_images))
                 tries += 1
             self.preview_idx = new_idx
-            small_pil_holder['pil'] = array_to_pil(small_images[self.preview_idx])
+            small_pil_holder['pil'] = fm2p.array_to_pil(small_images[self.preview_idx])
             draw_small()
             print('Displaying stitching position: {}'.format(self.position_keys[self.preview_idx]))
 
         Button(win, text="Random Preview", command=pick_random).pack()
-
         draw_small()
-
         win.mainloop()
+
 
     def _setup_alignment_window(self):
 
         print('Opening alignment window.')
-
         self.root = tk.Tk()
-        
         self.root.title("Manual Image Registration")
-
         self.canvas = tk.Canvas(self.root,
                                 width=self.fullimg_pil.width,
                                 height=self.fullimg_pil.height)
@@ -310,7 +284,7 @@ class ManualImageAligner:
         self.canvas.bind("<Button-5>", self.rotate_image)
 
         # also bind application-wide so wheel events are caught even
-        # when the canvas doesn't have focus (fixes behavior on Linux/Ubuntu)
+        # when the canvas doesn't have focus (fix for linux)
         try:
             self.root.bind_all("<MouseWheel>", self.rotate_image)
             self.root.bind_all("<Button-4>", self.rotate_image)
@@ -349,6 +323,8 @@ class ManualImageAligner:
         print('Drawing image from position {}'.format(self.position_keys[self.index]))
         self.draw_small_image()
         # update accept button text to reflect first/next tile state
+        # TODO: the first button is blank / has no label, then it appears once you
+        # place the first one. how to fix this?
         try:
             if hasattr(self, 'update_accept_button_text'):
                 self.update_accept_button_text()
@@ -365,14 +341,17 @@ class ManualImageAligner:
             x, y, anchor="center", image=self.current_tk
         )
 
+
     def start_move(self, event):
         self.drag_start = np.array([event.x, event.y])
+
 
     def move_image(self, event):
         delta = np.array([event.x, event.y]) - self.drag_start
         self.drag_start = np.array([event.x, event.y])
         self.current_offset += delta
         self.draw_small_image()
+
 
     def rotate_image(self, event):
         # normalize wheel event to rotation step
@@ -391,6 +370,7 @@ class ManualImageAligner:
             self.flipped_flags[self.index] = not self.flipped_flags[self.index]
             print(f"Tile {self.index} flipped: {self.flipped_flags[self.index]}")
             self.load_small_image()
+
 
     def accept_alignment(self):
         # paste the sml img into WF img
@@ -439,6 +419,7 @@ class ManualImageAligner:
 
         self.load_small_image()
 
+
     def run(self):
         # create the main root first so that choose_scale_factor() can safely
         # create a top lvl window without raising TclError
@@ -469,7 +450,6 @@ class ManualImageAligner:
     def fine_tune_transforms(self):
         """Open a window showing all tiles together for fine adjustments.
 
-        Features:
         - Click a tile to select it
         - Drag to move selected tile (or all tiles if "Move All" is active)
         - Mouse wheel to rotate selected tile
@@ -492,7 +472,7 @@ class ManualImageAligner:
         base_tk = ImageTk.PhotoImage(base_img, master=win)
         base_id = canvas.create_image(0, 0, anchor='nw', image=base_tk)
 
-        # state for each tile: keep current angle, flipped, center coords, and tk image
+        # state for each tile: keep current angle, flipped, center coords, tk image
         tile_state = []
 
         for idx, img_pil in enumerate(self.small_imgs_pil):
@@ -556,15 +536,16 @@ class ManualImageAligner:
             idx = selected['idx']
             if idx is None:
                 return
-            s = tile_state[idx]
-            w = s.get('w_rot', 0)
-            h = s.get('h_rot', 0)
-            x = s['x']
-            y = s['y']
+            s =   tile_state[idx]
+            w =  s.get('w_rot', 0)
+            h =  s.get('h_rot', 0)
+            x =  s['x']
+            y =  s['y']
             x0 = int(x - w/2)
             y0 = int(y - h/2)
             x1 = int(x + w/2)
             y1 = int(y + h/2)
+
             # draw rectangle and a small label with index/key
             sel_visual['rect'] = canvas.create_rectangle(x0, y0, x1, y1, outline='red', width=2)
             label_text = f"{idx}: {self.position_keys[idx] if idx < len(self.position_keys) else ''}"
@@ -703,8 +684,6 @@ class ManualImageAligner:
 
             win.destroy()
 
-
-        # bindings
         canvas.bind('<ButtonPress-1>', on_click)
         canvas.bind('<ButtonPress-3>', on_start_drag)
         canvas.bind('<B3-Motion>', on_drag)
@@ -715,7 +694,6 @@ class ManualImageAligner:
         canvas.bind('<Button-4>', on_wheel)
         canvas.bind('<Button-5>', on_wheel)
 
-        # Also bind application-wide (works on Linux/Ubuntu with physical mice)
         try:
             win.bind_all('<MouseWheel>', on_wheel)
             win.bind_all('<Button-4>', on_wheel)
@@ -723,7 +701,6 @@ class ManualImageAligner:
         except Exception:
             pass
 
-        # Controls
         ctrl_frame = tk.Frame(win)
         ctrl_frame.pack(fill='x')
 
@@ -773,6 +750,7 @@ class ManualImageAligner:
         dx = x_s - cx
         dy = y_s - cy
         # if tile was flipped horizontally, mirror x before rotation
+        # needs to be before
         if flipped_flag:
             dx = -dx
         # rotate
@@ -836,7 +814,6 @@ def register_tiled_locations():
     )
     resized_fullimg = zoom(fullimg, zoom=zoom_factors, order=1)
 
-    # cohort directory
     cohort_dir = fm2p.select_directory('Select cohort directory (does not need to be just this animal).')
 
     smallimgs = []
@@ -846,7 +823,7 @@ def register_tiled_locations():
     for p in preproc_paths:
         main_key = os.path.split(os.path.split(os.path.split(p)[0])[0])[1]
         pos_key = main_key.split('_')[-1]
-        # attempt to parse numeric suffix for ordering
+        # numeric suffix
         try:
             pos_num = int(''.join([c for c in pos_key if c.isdigit()]))
         except Exception:
@@ -862,6 +839,7 @@ def register_tiled_locations():
         pos_keys.append(pos_key)
         
     # replace preproc_paths with the sorted order for later loops
+    # TODO: does this work? not tested...
     preproc_paths = [e[3] for e in entries]
 
 

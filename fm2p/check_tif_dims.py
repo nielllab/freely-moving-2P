@@ -1,9 +1,17 @@
+# -*- coding: utf-8 -*-
+"""
+Check the dimensions of a tif. Currently reads every page until there are
+no remaining pages. Not an efficient way to do it, but safe.
+
+Author: DMM, last modified Oct 2025
+"""
+
 
 from PIL import Image
-import sys
 import os
 
 import fm2p
+
 
 def check_tiff_dims(tiff_path=None):
     """Check and print dimensions of each page in a multi-page TIFF file."""
@@ -27,7 +35,7 @@ def check_tiff_dims(tiff_path=None):
                 page_count += 1
                 width, height = img.size
                 if page_count == 0:
-                    print(f"Page {page_count}: {width} × {height} pixels")
+                    print(f"Page {page_count}: {width} x {height} pixels")
 
                 try:
                     img.seek(img.tell() + 1)
@@ -38,6 +46,7 @@ def check_tiff_dims(tiff_path=None):
 
     except Exception as e:
         print(f"Error reading TIFF file: {e}")
+
 
 if __name__ == "__main__":
 

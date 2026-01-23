@@ -6,6 +6,7 @@ review the resulting maps. Panels (from left to right) are the STA calculated
 from the entire recording followed by two panels of an STA calculated on shuffled
 halves of the data. 
 
+Author: DMM, last modified Jan 2026
 """
 
 
@@ -28,7 +29,7 @@ def label_and_fit_gui(STA, STA1, STA2, out_path=None):
     labels = -1 * np.ones(n, dtype=int)
     history = []  # tuples for undo: ('mark', idx) or ('skip', idx, old_pos)
 
-    # If an output path exists with saved labels, load them and skip the GUI review
+    # ff an output path exists with saved labels, load them and skip the GUI review
     skip_review = False
     if out_path is not None and os.path.exists(out_path):
         try:

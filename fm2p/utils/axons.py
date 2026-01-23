@@ -10,7 +10,7 @@ Functions
 get_independent_axons(matpath, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False)
     Identifies independent axons from a .mat file containing calcium imaging data.
 
-Author: DMM, May 2025
+Author: DMM, last modified May 2025
 """
 
 
@@ -20,16 +20,16 @@ warnings.filterwarnings('ignore')
 import numpy as np
 from scipy import io
 import itertools
-import oasis
 from collections import defaultdict
 
 import fm2p
 import imgtools
 
 
-def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False,
-                                 fps=7.5, frame_means=None):
-    """ Identify independent axons from a .mat file containing calcium imaging data.
+def get_single_independent_axons(
+        dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False,
+        fps=7.5, frame_means=None):
+    """ Identify independent axons and drop the axons with the lower integrated dFF.
     
     Parameters
     ----------
@@ -41,8 +41,8 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
     gcc_thresh : float, optional
         Threshold for global frame correlation coefficient. Default is 0.5.
     apply_dFF_filter : bool, optional
-        If True, apply a filter to the dF/F traces before calculating correlation coefficients.
-        Default is False.
+        If True, apply a filter to the dF/F traces before calculating correlation
+        coefficients. Default is False.
 
     Returns
     -------
@@ -56,14 +56,8 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
         List of indices of independent axons.
     """
 
-    # fps = 7.49
-
-    # mat = io.loadmat(matpath)
-    # dff_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='DFF')[0])
-    # dFF = mat['data'].item()[dff_ind].copy()
-
     if apply_dFF_filter:
-        # Smooth dFF traces of all cells
+        # smooth dFF traces
         all_smoothed_units = []
         for c in range(np.size(dFF, 0)):
             y = imgtools.nanmedfilt(
@@ -72,7 +66,7 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
             all_smoothed_units.append(y)
         all_smoothed_units = np.array(all_smoothed_units)
 
-    # Calculate all between-cell correlation coeffients
+    # calc between-cell correlation coeffients
     perm_mat = np.array(list(itertools.combinations(range(np.size(dFF, 0)), 2)))
     cc_vec = np.zeros([np.size(perm_mat,0)])
     if apply_dFF_filter:
@@ -88,7 +82,7 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
                 dFF[perm_mat[i,1]][np.newaxis,:]
             )
 
-    # Find axon pairs with cc above threshold
+    # find axon pairs with cc above threshold
     check_index = np.where(cc_vec > cc_thresh)[0]
     exclude_inds = []
 
@@ -97,7 +91,7 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
         axon1 = perm_mat[c,0]
         axon2 = perm_mat[c,1]
 
-        # Exclude the neuron with the lower integrated dFF
+        # exclude the neuron with the lower integrated dFF
         if (np.sum(dFF[axon1,:]) < np.sum(dFF[axon2,:])):
             exclude_inds.append(axon1)
         elif (np.sum(dFF[axon1,:]) > np.sum(dFF[axon2,:])):
@@ -106,12 +100,7 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
     exclude_inds = list(set(exclude_inds))
     usecells = [c for c in list(np.arange(np.size(dFF,0))) if c not in exclude_inds]
 
-    # Check correlation between global frame fluorescence and the dF/F of each axon.
-    # framef_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names)=='frame_F')[0])
-    # frameF = mat['data'].item()[framef_ind].copy()
-
     if frame_means is not None:
-
         gcc_vec = np.zeros([len(usecells)])
         for i,c in enumerate(usecells):
             gcc_vec[i] = fm2p.corr2_coeff(
@@ -119,26 +108,29 @@ def get_single_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_f
                 frame_means
             )
 
-        # Find axons with gcc above threshold.
+        # find axons with gcc above threshold
         axon_correlates_with_globalF = np.where(gcc_vec > gcc_thresh)[0]
         usecells_gcc = [c for c in usecells if c not in axon_correlates_with_globalF]
 
-        # Remove axons with high correlation with global frame fluorescence.
+        # remove axons with high correlation with global frame fluorescence
         dFF_out = dFF.copy()[usecells_gcc, :]
     
     elif frame_means is None:
         dFF_out = dFF.copy()[usecells, :]
 
-    # Remove axons with high correlation with other axons.
+    # remove axons w/ high correlation w/ other axons
     denoised_dFF, sps = fm2p.calc_inf_spikes(dFF_out, fps=fps)
 
     return dFF_out, denoised_dFF, sps, usecells
 
 
 
-def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False,
-                                  fps=7.5, frame_means=None):
-    """ Identify independent axons by grouping correlated sets and averaging their dFF traces.
+def get_grouped_independent_axons(
+        dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False,
+        fps=7.5, frame_means=None
+    ):
+    """ Identify independent axons by grouping correlated sets and averaging
+    their dFF traces.
 
     Parameters
     ----------
@@ -150,8 +142,8 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
     gcc_thresh : float, optional
         Threshold for global frame correlation coefficient. Default is 0.5.
     apply_dFF_filter : bool, optional
-        If True, apply a filter to the dF/F traces before calculating correlation coefficients.
-        Default is False.
+        If True, apply a filter to the dF/F traces before calculating correlation
+        coefficients. Default is False.
 
     Returns
     -------
@@ -162,15 +154,11 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
     sps : np.ndarray
         Spike times of averaged independent axon groups.
     usecells : list of lists
-        Each sublist contains indices of axons that were grouped and averaged into one trace.
+        Each sublist contains indices of axons that were grouped and averaged
+        into one trace.
     """
 
-    # Load MATLAB data
-    # mat = io.loadmat(matpath)
-    # dff_ind = int(np.argwhere(np.asarray(mat['data'][0].dtype.names) == 'DFF')[0])
-    # dFF = mat['data'].item()[dff_ind].copy()
-
-    # Optionally smooth dFF
+    # optionally smooth dFF
     if apply_dFF_filter:
         all_smoothed_units = []
         for c in range(np.size(dFF, 0)):
@@ -183,7 +171,7 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
     else:
         all_smoothed_units = dFF
 
-    # Compute pairwise correlations
+    # compute pairwise correlations
     perm_mat = np.array(list(itertools.combinations(range(np.size(dFF, 0)), 2)))
     cc_vec = np.zeros([np.size(perm_mat, 0)])
     for i in range(np.size(perm_mat, 0)):
@@ -192,14 +180,14 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
             all_smoothed_units[perm_mat[i, 1]][np.newaxis, :]
         )
 
-    # Build graph of correlated axons
+    # build graph of correlated axons
     adjacency = defaultdict(set)
     for idx, c in enumerate(perm_mat):
         if cc_vec[idx] > cc_thresh:
             adjacency[c[0]].add(c[1])
             adjacency[c[1]].add(c[0])
 
-    # Find connected components (groups of correlated axons)
+    # find connected components (groups of correlated axons)
     visited = set()
     groups = []
     for node in range(np.size(dFF, 0)):
@@ -214,7 +202,7 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
                     stack.extend(adjacency[n] - visited)
             groups.append(sorted(list(group)))
 
-    # Average traces within each group
+    # average traces within each group
     averaged_traces = []
     for group in groups:
         avg_trace = np.mean(dFF[group, :], axis=0)
@@ -253,7 +241,10 @@ def get_grouped_independent_axons(dFF, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_
     return dFF_out, denoised_dFF, sps, kept_groups
 
 
-def get_independent_axons(cfg, s2p_dict=None, matpath=None, merge_duplicates=True, cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False):
+def get_independent_axons(
+        cfg, s2p_dict=None, matpath=None, merge_duplicates=True,
+        cc_thresh=0.5, gcc_thresh=0.5, apply_dFF_filter=False
+    ):
 
     fps = cfg['twop_rate']
 

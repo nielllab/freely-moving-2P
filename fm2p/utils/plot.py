@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+
+
 from matplotlib.patches import Ellipse
 from scipy.stats import chi2
 

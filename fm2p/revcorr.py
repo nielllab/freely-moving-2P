@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Reverse correlation (revcorr) analysis utilities for freely-moving 2P experiments.
+Reverse correlation analysis utilities for freely-moving 2P experiments.
 
 This script provides functions to compute tuning reliability and modulation for neural data
 using reverse correlation, for both standard and light/dark (ltdk) experiments.
@@ -16,17 +16,13 @@ Functions:
 Example usage:
     $ python revcorr.py -cfg config.yaml
 
-Author: DMM, July 2025
+Author: DMM, last modified July 2025
 """
 
 
 import os
 import argparse
 import numpy as np
-from tqdm import tqdm
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 
 import fm2p
 
