@@ -435,7 +435,10 @@ class ManualImageAligner:
         self.load_small_image()
         self.root.mainloop()
 
-        # After per-tile alignment, offer composite fine-tune stage
+        # Close the alignment window before opening fine-tune window
+        self.root.destroy()
+
+        # After per-tile alignment, offer a composite fine-tune stage
         try:
             self.fine_tune_transforms()
         except Exception as e:
@@ -721,6 +724,9 @@ class ManualImageAligner:
     # global transform any time, not just after alignment. prob need to convert
     # to a dict, save as h5, then convert back to list when you load it in.
     def local_to_global(self, img_index, x_local, y_local):
+
+        print('  -> Performing local-to-global transformation for all cells.')
+
         if img_index >= len(self.transforms):
             raise ValueError("Image transform not available yet.")
         t = self.transforms[img_index]
@@ -840,20 +846,20 @@ def register_tiled_locations():
     aligner = ManualImageAligner(resized_fullimg, smallimgs, pos_keys, scale_factor=1.0)
     transforms = aligner.run()
 
-    composite = overlay_registered_images(
-        resized_fullimg,
-        smallimgs,
-        transforms,
-        scale_factor=0.27)
+    # composite = overlay_registered_images(
+    #     resized_fullimg,
+    #     smallimgs,
+    #     transforms,
+    #     scale_factor=0.27)
     
-    Image.fromarray(composite).save("composite_aligned_frames_v1.png")
+    # Image.fromarray(composite).save("composite_aligned_frames_v1.png")
 
     all_global_positions = {}
 
     for pi, p in tqdm(enumerate(preproc_paths)):
         main_key = os.path.split(os.path.split(os.path.split(p)[0])[0])[1]
         pos_key = main_key.split('_')[-1]
-        pos = int(pos_key[-2:])
+        # pos = int(pos_key[-2:])
         pdata = fm2p.read_h5(p)
 
         cell_positions = np.zeros([len(pdata['cell_x_pix'].keys()), 4])
