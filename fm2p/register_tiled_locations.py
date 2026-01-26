@@ -682,7 +682,7 @@ class ManualImageAligner:
                 else:
                     self.transforms.append((float(s['x']), float(s['y']), float(s['angle']), bool(s['flipped'])))
 
-            win.destroy()
+            win.quit()
 
         canvas.bind('<ButtonPress-1>', on_click)
         canvas.bind('<ButtonPress-3>', on_start_drag)
@@ -714,6 +714,7 @@ class ManualImageAligner:
         btn_accept.pack(side='right')
 
         win.mainloop()
+        win.destroy()
 
     # do coord transform from within small img to full widefield map
     # needs to know which small tile / stitching positoin the cell is in,
@@ -724,8 +725,6 @@ class ManualImageAligner:
     # global transform any time, not just after alignment. prob need to convert
     # to a dict, save as h5, then convert back to list when you load it in.
     def local_to_global(self, img_index, x_local, y_local):
-
-        print('  -> Performing local-to-global transformation for all cells.')
 
         if img_index >= len(self.transforms):
             raise ValueError("Image transform not available yet.")
@@ -874,7 +873,7 @@ def register_tiled_locations():
     fm2p.write_h5(
         os.path.join(
             os.path.split(fullimg_path)[0],
-            '{}_aligned_composite_local_to_global_transform_v1.h5'.format(animalID)
+            '{}_aligned_composite_local_to_global_transform_v2.h5'.format(animalID)
         ),
         all_global_positions
     )
