@@ -60,6 +60,7 @@ mpl.rcParams['font.family'] = 'Arial'
 mpl.rcParams['font.size'] = 8
 import matplotlib.gridspec as gridspec
 from matplotlib.backends.backend_pdf import PdfPages
+from itertools import combinations
 
 import fm2p
 
@@ -88,6 +89,15 @@ def add_scatter_col(ax, pos, vals):
     ax.vlines(pos, np.nanmean(vals)-stderr, np.nanmean(vals)+stderr, color='r')
 
 
+def get_colors():
+    return [
+        '#0d0887',
+        '#9c179e',
+        '#ed7953',
+        '#f0f921'
+    ]
+
+
 def read_models(models_dir):
     """ Read model data from specified directory.
 
@@ -105,11 +115,10 @@ def read_models(models_dir):
         Dictionary containing model results for each model type.
     """
 
-    key_list = [
-        'P','R','E',
-        'PR','PE','RE',
-        'PRE'
-    ]
+    key_list = []
+    for count in np.arange(1,5):
+        c_ = [''.join(x) for x in list(combinations(['A','B','C','D'], count))]
+        key_list.extend(c_)
 
     model_data = {}
     for mk in key_list:
@@ -146,11 +155,10 @@ def plot_model_LLHs(model_data, unit_num, test_only=False, fig=None, ax=None, ti
 
     uk = str(unit_num)
 
-    key_list = [
-        'P','R','E',
-        'PR','PE','RE',
-        'PRE'
-    ]
+    key_list = []
+    for count in np.arange(1,5):
+        c_ = [''.join(x) for x in list(combinations(['A','B','C','D'], count))]
+        key_list.extend(c_)
 
     if (fig is None) and (ax is None):
         fig, ax = plt.subplots(1,1, dpi=300, figsize=(6,2))
@@ -233,14 +241,16 @@ def eval_models(model_data, unit_num, wilcoxon_thresh=0.05):
 
     uk = str(unit_num)
 
-    all_1st_keys = ['P','R','E']
-    all_2nd_keys = ['PR','PE','RE']
+    all_1st_keys = ['A','B','C','D']
+    all_2nd_keys = ['AB','AC','AD','BC','BD','CD']
+    all_3rd_keys = ['ABC','ABD','ACD','BCD']
 
     best_1st_order = _get_best_model(model_data, uk, all_1st_keys)
     best_2nd_order = _get_best_model(model_data, uk, [mk for mk in all_2nd_keys if best_1st_order in mk])
-    best_3rd_order = 'PRE'
+    best_3rd_order = _get_best_model(model_data, uk, [mk for mk in all_3rd_keys if best_2nd_order[0] in mk and best_2nd_order[1] in mk])
+    best_4th_order = 'ABCD'
 
-    best_of_orders = [best_1st_order, best_2nd_order, best_3rd_order]
+    best_of_orders = [best_1st_order, best_2nd_order, best_3rd_order, best_4th_order]
 
     test_12 = scipy.stats.wilcoxon(
         model_data[best_1st_order][uk]['testFit'][:,2],
@@ -249,22 +259,28 @@ def eval_models(model_data, unit_num, wilcoxon_thresh=0.05):
     ).pvalue
     test_23 = scipy.stats.wilcoxon(
         model_data[best_2nd_order][uk]['testFit'][:,2],
-        model_data['PRE'][uk]['testFit'][:,2],
+        model_data[best_3rd_order][uk]['testFit'][:,2],
+        alternative='less'
+    ).pvalue
+    test_34 = scipy.stats.wilcoxon(
+        model_data[best_3rd_order][uk]['testFit'][:,2],
+        model_data[best_4th_order][uk]['testFit'][:,2],
         alternative='less'
     ).pvalue
 
-    wilcoxon_results = [0, test_12, test_23]
+    wilcoxon_results = [0, test_12, test_23, test_34]
 
     best_model = np.nan
 
     results = {
-        'sel_models': [best_1st_order, best_2nd_order, best_3rd_order],
+        'sel_models': [best_1st_order, best_2nd_order, best_3rd_order, best_4th_order],
         'best_model': best_model,
         'test_12': test_12,
         'test_23': test_23,
+        'test_34': test_34
     }
 
-    for k in range(3):
+    for k in range(4):
 
         res = wilcoxon_results[k]
 
@@ -312,13 +328,14 @@ def plot_rank_test_results(model_data, test_results, unit_num, fig=None, axs=Non
     uk = str(unit_num)
 
 
-    best_1st_order, best_2nd_order, best_3rd_order = test_results['sel_models']
+    best_1st_order, best_2nd_order, best_3rd_order, best_4th_order = test_results['sel_models']
 
     # log likelihood values
     allvals_tmp = np.concatenate([
         model_data[best_1st_order][uk]['testFit'][:,2],
         model_data[best_2nd_order][uk]['testFit'][:,2],
-        model_data['PRE'][uk]['testFit'][:,2]
+        model_data[best_3rd_order][uk]['testFit'][:,2],
+        model_data[best_4th_order][uk]['testFit'][:,2]
     ])
     set_min = np.nanmin(allvals_tmp) - np.nanmin(allvals_tmp)*0.01
     set_max = np.nanmax(allvals_tmp) + np.nanmax(allvals_tmp)*0.01
@@ -328,13 +345,14 @@ def plot_rank_test_results(model_data, test_results, unit_num, fig=None, axs=Non
 
     test_12 = test_results['test_12']
     test_23 = test_results['test_23']
+    test_34 = test_results['test_34']
 
     if (fig is None) and (axs is None):
-        fig, [ax1,ax2] = plt.subplots(1,2, figsize=(5,2), dpi=300)
+        fig, [ax1,ax2,ax3] = plt.subplots(1,3, figsize=(5,2), dpi=300)
     else:
         [ax1,ax2] = axs
 
-    for ax in [ax1,ax2]:
+    for ax in [ax1,ax2,ax3]:
         ax.set_xlim([set_min, set_max]); ax.set_ylim([set_min, set_max])
         ax.set_xticks([set_min, set_mid, set_max]); ax.set_yticks([set_min, set_mid, set_max])
         ax.plot([set_min, set_max],[set_min, set_max], color='k', linestyle='--', lw=1, alpha=0.3)
@@ -356,7 +374,16 @@ def plot_rank_test_results(model_data, test_results, unit_num, fig=None, axs=Non
     )
     ax2.set_title('p={:.3f}'.format(test_23))
     ax2.set_xlabel('{} model LLH'.format(best_2nd_order))
-    ax2.set_ylabel('{} model LLH'.format('PRE'))
+    ax2.set_ylabel('{} model LLH'.format(best_3rd_order))
+
+    ax3.scatter(
+        model_data[best_3rd_order][uk]['testFit'][:,2],
+        model_data[best_4th_order][uk]['testFit'][:,2],
+        color='k', s=3.5
+    )
+    ax3.set_title('p={:.3f}'.format(test_34))
+    ax3.set_xlabel('{} model LLH'.format(best_3rd_order))
+    ax3.set_ylabel('{} model LLH'.format(best_4th_order))
 
     fig.suptitle('Wilcoxon signed-rank test (best={})'.format(test_results['best_model']))
 
@@ -444,7 +471,7 @@ def plot_pred_spikes(model_data, unit_num, selected_models, fig=None, axs=None):
     return fig
 
 
-def calc_scaled_LNLP_tuning_curves(model_data=None, unit_num=0, ret_stderr=True,
+def calc_scaled_LNLP_tuning_curves(model_data=None, model_bins=None, unit_num=0, ret_stderr=True,
                                    params=None, param_stderr=None):
     """ Calculate scaled tuning curves for the LNP model.
     
@@ -473,63 +500,68 @@ def calc_scaled_LNLP_tuning_curves(model_data=None, unit_num=0, ret_stderr=True,
 
     uk = str(unit_num)
 
-    mk = 'PRE'
+    mk = 'ABCD'
 
     if params is None:
         params = model_data[mk][uk]['param_mean']
 
-    tuningP, tuningR, tuningE = fm2p.find_param(
+    tuningA, tuningB, tuningC, tuningD = fm2p.find_param(
         params,
         mk,
-        10, 36, 36
+        model_bins[0], model_bins[1], model_bins[2], model_bins[3]
     )
     
     # Scale factor to convert to units of spikes/sec
-    scale_factor_P = np.nanmean(np.exp(tuningR)) * np.nanmean(np.exp(tuningE))
-    scale_factor_R = np.nanmean(np.exp(tuningP)) * np.nanmean(np.exp(tuningE))
-    scale_factor_E = np.nanmean(np.exp(tuningP)) * np.nanmean(np.exp(tuningR))
+    scale_factor_A = np.nanmean(np.exp(tuningB)) * np.nanmean(np.exp(tuningC)) * np.nanmean(np.exp(tuningD))
+    scale_factor_B = np.nanmean(np.exp(tuningA)) * np.nanmean(np.exp(tuningC)) * np.nanmean(np.exp(tuningD))
+    scale_factor_C = np.nanmean(np.exp(tuningA)) * np.nanmean(np.exp(tuningB)) * np.nanmean(np.exp(tuningD))
+    scale_factor_D = np.nanmean(np.exp(tuningA)) * np.nanmean(np.exp(tuningB)) * np.nanmean(np.exp(tuningC))
     
     # Compute model-derived response profile
-    predP = np.exp(tuningP) * scale_factor_P
-    predR = np.exp(tuningR) * scale_factor_R
-    predE = np.exp(tuningE) * scale_factor_E
+    predA = np.exp(tuningA) * scale_factor_A
+    predB = np.exp(tuningB) * scale_factor_B
+    predC = np.exp(tuningC) * scale_factor_C
+    predD = np.exp(tuningD) * scale_factor_D
 
     if (param_stderr is None) and (ret_stderr is True):
 
-        k = 10
+        k = len(model_data.keys())
 
         param_matrix = model_data[mk][uk]['param_matrix']
 
-        k_tuningP = np.zeros([k,10])
-        k_tuningR = np.zeros([k,36])
-        k_tuningE = np.zeros([k,36])
+        k_tuningA = np.zeros([k,model_bins[0]])
+        k_tuningB = np.zeros([k,model_bins[1]])
+        k_tuningC = np.zeros([k,model_bins[2]])
+        k_tuningD = np.zeros([k,model_bins[3]])
         
         for k_i in range(k):
 
-            ki_tuningP, ki_tuningR, ki_tuningE = fm2p.find_param(
+            ki_tuningA, ki_tuningB, ki_tuningC, ki_tuningD = fm2p.find_param(
                 param_matrix[k_i,:],
                 mk,
-                10, 36, 36
+                model_bins[0], model_bins[1], model_bins[2], model_bins[3]
             )
 
-            k_tuningP[k_i,:] = np.exp(ki_tuningP) * scale_factor_P
-            k_tuningR[k_i,:] = np.exp(ki_tuningR) * scale_factor_R
-            k_tuningE[k_i,:] = np.exp(ki_tuningE) * scale_factor_E
+            k_tuningA[k_i,:] = np.exp(ki_tuningA) * scale_factor_A
+            k_tuningB[k_i,:] = np.exp(ki_tuningB) * scale_factor_B
+            k_tuningC[k_i,:] = np.exp(ki_tuningC) * scale_factor_C
+            k_tuningD[k_i,:] = np.exp(ki_tuningD) * scale_factor_D
 
-        errP = np.std(k_tuningP, 0)
-        errR = np.std(k_tuningR, 0)
-        errE = np.std(k_tuningE, 0)
+        errA = np.std(k_tuningA, 0)
+        errB = np.std(k_tuningB, 0)
+        errC = np.std(k_tuningC, 0)
+        errD = np.std(k_tuningD, 0)
 
-        return (predP, errP), (predR, errR), (predE, errE)
+        return (predA, errA), (predB, errB), (predC, errC), (predD, errD)
 
-    return predP, predR, predE
+    return predA, predB, predC, predD
 
 
-def plot_scaled_LNLP_tuning_curves(predP, predR, predE,
-                                   errP, errR, errE,
-                                   pupil_bins, retino_bins, ego_bins,
-                                   predP2=None, predR2=None, predE2=None,
-                                   errP2=None, errR2=None, errE2=None,
+def plot_scaled_LNLP_tuning_curves(predA, predB, predC, predD,
+                                   errA, errB, errC, errD,
+                                   A_bins, B_bins, C_bins, D_bins,
+                                   predA2=None, predB2=None, predC2=None, predD2=None,
+                                   errA2=None, errB2=None, errC2=None, errD2=None,
                                    fig=None, axs=None):
     """ Plot scaled tuning curves for the LNP model.
 
@@ -576,30 +608,37 @@ def plot_scaled_LNLP_tuning_curves(predP, predR, predE,
         Figure object containing the plot.
     """
 
+    colors = get_colors()
+
     if (fig is None) and (axs is None):
-        fig, [ax1,ax2,ax3] = plt.subplots(1,3, figsize=(5,1.8), dpi=300)
+        fig, [ax1,ax2,ax3,ax4] = plt.subplots(1,3, figsize=(5,1.8), dpi=300)
     else:
-        [ax1,ax2,ax3] = axs
+        [ax1,ax2,ax3,ax4] = axs
 
-    ax1.plot(pupil_bins, predP, color='tab:blue')
-    ax1.fill_between(pupil_bins, predP-errP, predP+errP, color='tab:blue', alpha=0.3)
-    ax1.set_xlabel('pupil (deg)')
+    ax1.plot(A_bins, predA, color=colors[0])
+    ax1.fill_between(A_bins, predA-errA, predA+errA, color=colors[0], alpha=0.3)
+    ax1.set_xlabel('theta (deg)')
 
-    ax2.plot(retino_bins, predR, color='tab:orange')
-    ax2.fill_between(retino_bins, predR-errR, predR+errR, color='tab:orange', alpha=0.3)
-    ax2.set_xlabel('retino (deg)')
+    ax2.plot(B_bins, predB, color=colors[1])
+    ax2.fill_between(B_bins, predB-errB, predB+errB, color=colors[1], alpha=0.3)
+    ax2.set_xlabel('phi (deg)')
 
-    ax3.plot(ego_bins, predE, color='tab:green')
-    ax3.fill_between(ego_bins, predE-errE, predE+errE, color='tab:green', alpha=0.3)
-    ax3.set_xlabel('ego (deg)')
+    ax3.plot(C_bins, predC, color=colors[2])
+    ax3.fill_between(C_bins, predC-errC, predC+errC, color=colors[2], alpha=0.3)
+    ax3.set_xlabel('dTheta (deg)')
+
+    ax4.plot(D_bins, predD, color=colors[3])
+    ax4.fill_between(D_bins, predD-errD, predD+errD, color=colors[3], alpha=0.3)
+    ax4.set_xlabel('dPhi (deg)')
 
     _setmax = np.max([np.max(x) for x in [
-        predP,
-        predR,
-        predE
+        predA,
+        predB,
+        predC,
+        predD
     ]]) * 1.1
 
-    for ax in [ax1,ax2,ax3]:
+    for ax in [ax1,ax2,ax3,ax4]:
         ax.set_ylim([
             0,
             _setmax * 1.1
@@ -633,59 +672,62 @@ def calc_bootstrap_model_params(data_vars, var_bins, spikes, n_iter=30):
 
     mk = 'PRED'
         
-    pupil_data, ret_data, ego_data = data_vars
+    A_data, B_data, C_data, D_data = data_vars
 
-    pupil_bins, retino_bins, ego_bins = var_bins
+    A_bins, B_bins, C_bins, D_bins = var_bins
 
     param_counts = [
-        len(pupil_bins),
-        len(retino_bins),
-        len(ego_bins)
+        len(A_bins),
+        len(B_bins),
+        len(C_bins),
+        len(D_bins)
     ]
 
-    mapP = fm2p.make_varmap(pupil_data, pupil_bins)
-    mapR = fm2p.make_varmap(ret_data, retino_bins, circ=True)
-    mapE = fm2p.make_varmap(ego_data, ego_bins, circ=True)
+    mapA = fm2p.make_varmap(A_data, A_bins)
+    mapB = fm2p.make_varmap(B_data, B_bins)
+    mapC = fm2p.make_varmap(C_data, C_bins)
+    mapD = fm2p.make_varmap(D_data, D_bins)
 
-    A = np.concatenate([mapP, mapR, mapE], axis=1)
-    A = A[np.sum(np.isnan(A), axis=1)==0, :]
+    Ib = np.concatenate([mapA, mapB, mapC, mapD], axis=1)
+    Ib = Ib[np.sum(np.isnan(Ib), axis=1)==0, :]
 
-    shufP = np.zeros([n_iter, len(pupil_bins)]) * np.nan
-    shufR = np.zeros([n_iter, len(retino_bins)]) * np.nan
-    shufE = np.zeros([n_iter, len(ego_bins)]) * np.nan
+    shufA = np.zeros([n_iter, len(A_bins)]) * np.nan
+    shufB = np.zeros([n_iter, len(B_bins)]) * np.nan
+    shufC = np.zeros([n_iter, len(C_bins)]) * np.nan
+    shufD = np.zeros([n_iter, len(D_bins)]) * np.nan
 
     print('Running bootstrap...')
     for it in tqdm(range(n_iter)):
 
         # Shuffle the order of the data for each iteration
-        shuf_inds = np.random.choice(np.arange(np.size(A,0)), np.size(A,0), replace=False)
+        shuf_inds = np.random.choice(np.arange(np.size(Ib,0)), np.size(Ib,0), replace=False)
         
-        A_shuf = A.copy()
-        A_shuf = A_shuf[shuf_inds,:]
+        Ib_shuf = Ib.copy()
+        Ib_shuf = Ib_shuf[shuf_inds,:]
 
         spikes_shuf = spikes.copy()
         spikes_shuf = spikes_shuf[shuf_inds]
 
         # Fit the model to the shuffled data
         _, _, param_mean, param_stderr, _, _ = fm2p.fit_LNLP_model(
-            A_shuf, 0.05, spikes_shuf, np.ones(1), mk, param_counts
+            Ib_shuf, 0.05, spikes_shuf, np.ones(1), mk, param_counts
         )
         
         # Calculate the tuning curves for the shuffled data
-        predP, predR, predE, predD = fm2p.calc_scaled_LNLP_tuning_curves(
+        predA, predB, predC, predD = fm2p.calc_scaled_LNLP_tuning_curves(
             params=param_mean,
             param_stderr=param_stderr,
             ret_stderr=False
         )
 
-        shufP[it,:] = predP
-        shufR[it,:] = predR
-        shufE[it,:] = predE
-
+        shufA[it,:] = predA
+        shufB[it,:] = predB
+        shufC[it,:] = predC
+        shufD[it,:] = predD
 
     bootstrap_model_params = {}
-    mkk = ['P', 'R', 'E', 'D']
-    for p_i, p in enumerate([shufP, shufR, shufE]):
+    mkk = ['A', 'B', 'C', 'D']
+    for p_i, p in enumerate([shufA, shufB, shufC, shufD]):
 
         # Calculate the mean and standard error of the model parameters. The standard error
         # does not need to be divided by the square root of the number of iterations because
@@ -716,7 +758,7 @@ def get_cells_best_LLHs(model_data):
     """
 
     # Get total number of cells (any model key is fine)
-    num_cells = len(model_data['P'].keys())
+    num_cells = len(model_data['A'].keys())
 
     all_best_LLHs = np.zeros(num_cells) * np.nan
 
@@ -735,14 +777,14 @@ def get_cells_best_LLHs(model_data):
         
         # A few cells occasionally have NaN for best model because some k-folds have
         # NaN values for the fit. Could hunt this problem down later, but could be a
-        # problem w/ the spike rates
+        # problem w/ the spike rates?
         if (type(best_model) != str) and (np.isnan(best_model)):
             continue
 
         # Get the log likelihood for the best performing model
         best_LLH = model_data[best_model][cstr]['testFit'][:,2]
 
-        # Calculate the average LLH across k-folds
+        # avg LLH across k-folds
         best_LLH = np.nanmean(best_LLH)
 
         all_best_LLHs[c] = best_LLH

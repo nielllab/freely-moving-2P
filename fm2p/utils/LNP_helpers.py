@@ -65,11 +65,42 @@ def rough_penalty(param, beta, circ=False):
     return float(J), J_g, J_h
 
 
+def find_param(param, modelType, numA, numB, numC, numD):
+    # more flexible approach
 
-def find_param(param, modelType, numP, numR, numE):
+    # Map model names to their parameter counts
+    counts = {'A': numA, 'B': numB, 'C': numC, 'D': numD}
+    
+    # Initialize all results to empty arrays
+    results = {k: np.array([]) for k in ['A', 'B', 'C', 'D']}
+    
+    current_idx = 0
+    
+    # Iterate through the canonical order A -> B -> C -> D
+    for model in ['A', 'B', 'C', 'D']:
+        if model in modelType:
+            # How many params does this specific model need?
+            count = counts[model]
+            
+            # Slice the param array
+            # If it's the last one, take everything remaining to be safe
+            end_idx = current_idx + count
+            results[model] = param[current_idx : end_idx]
+            
+            # Move the index pointer
+            current_idx += count
+
+    # If the last slice didn't capture the very end (due to rounding or logic), 
+    # the last active model in the loop typically grabs `param[current_idx:]` 
+    # in the hardcoded version. The slicing above handles explicit counts.
+            
+    return results['A'], results['B'], results['C'], results['D']
+
+
+def find_param(param, modelType, numA, numB, numC, numD):
     """ Find the parameters for the model type.
 
-    Given a model type (e.g., 'PR'), find the parameters for
+    Given a model type (e.g., 'AB'), find the parameters for
     that model by indexing over the empty parameter values in
     the parameter array.
 
@@ -78,76 +109,79 @@ def find_param(param, modelType, numP, numR, numE):
     param : array_like
         Array of parameters.
     modelType : str
-        Model type string. Must contain only the character P, R, E, and/or D.
-    numP : int
-        Number of parameters for the pupil position model.
-    numR : int
-        Number of parameters for the retinotopic model.
-    numE : int
-        Number of parameters for the egocentric model.
+        Model type string. Must contain only the character A, B, C, and/or D.
+    numA : int
+        Number of parameters for model A.
+    numB : int
+        Number of parameters for model B.
+    numC : int
+        Number of parameters for model C.
     numD : int
-        Number of parameters for the distance model.
+        Number of parameters for model D.
     """
 
-    # Number of parameters
-    pP = np.array([])
-    pR = np.array([])
-    pE = np.array([])
+    # Initialize empty arrays
+    pA = np.array([])
+    pB = np.array([])
+    pC = np.array([])
     pD = np.array([])
 
-    if modelType == 'P':      # 1
-        pP = param
-    elif modelType == 'R':    # 2
-        pR = param
-    elif modelType == 'E':    # 3
-        pE = param
+    # --- Single Models ---
+    if modelType == 'A':      # 1
+        pA = param
+    elif modelType == 'B':    # 2
+        pB = param
+    elif modelType == 'C':    # 3
+        pC = param
     elif modelType == 'D':    # 4
         pD = param
 
-    elif modelType == 'PR':   # 5
-        pP = param[:numP]
-        pR = param[numP:]
-    elif modelType == 'PE':   # 6
-        pP = param[:numP]
-        pE = param[numP:]
-    elif modelType == 'PD':   # 7
-        pP = param[:numP]
-        pD = param[numP:]
-    elif modelType == 'RE':   # 8
-        pR = param[:numR]
-        pE = param[numR:]
-    elif modelType == 'RD':   # 9
-        pR = param[:numR]
-        pD = param[numR:]
-    elif modelType == 'ED':   # 10
-        pE = param[:numE]
-        pD = param[numE:]
+    # --- Double Models ---
+    elif modelType == 'AB':   # 5
+        pA = param[:numA]
+        pB = param[numA:]
+    elif modelType == 'AC':   # 6
+        pA = param[:numA]
+        pC = param[numA:]
+    elif modelType == 'AD':   # 7
+        pA = param[:numA]
+        pD = param[numA:]
+    elif modelType == 'BC':   # 8
+        pB = param[:numB]
+        pC = param[numB:]
+    elif modelType == 'BD':   # 9
+        pB = param[:numB]
+        pD = param[numB:]
+    elif modelType == 'CD':   # 10
+        pC = param[:numC]
+        pD = param[numC:]
     
-    elif modelType == 'PRE':  # 11
-        pP = param[:numP]
-        pR = param[numP : numP+numR]
-        pE = param[numP+numR :]
-    elif modelType == 'PRD':  # 12
-        pP = param[:numP]
-        pR = param[numP : numP+numR]
-        pD = param[numP+numR :]
-    elif modelType == 'PED':  # 13
-        pP = param[:numP]
-        pE = param[numP : numP+numE]
-        pD = param[numP+numE :]
-    elif modelType == 'RED':  # 14
-        pR = param[:numR]
-        pE = param[numR : numR+numE]
-        pD = param[numR+numE :]
+    # --- Triple Models ---
+    elif modelType == 'ABC':  # 11
+        pA = param[:numA]
+        pB = param[numA : numA+numB]
+        pC = param[numA+numB :]
+    elif modelType == 'ABD':  # 12
+        pA = param[:numA]
+        pB = param[numA : numA+numB]
+        pD = param[numA+numB :]
+    elif modelType == 'ACD':  # 13
+        pA = param[:numA]
+        pC = param[numA : numA+numC]
+        pD = param[numA+numC :]
+    elif modelType == 'BCD':  # 14
+        pB = param[:numB]
+        pC = param[numB : numB+numC]
+        pD = param[numB+numC :]
     
-    elif modelType == 'PRED': # 15
-        pP = param[:numP]
-        pR = param[numP : numP+numR]
-        pE = param[numP+numR : numP+numR+numE]
-        pD = param[numP+numR+numE :]
+    # --- Quad Model ---
+    elif modelType == 'ABCD': # 15
+        pA = param[:numA]
+        pB = param[numA : numA+numB]
+        pC = param[numA+numB : numA+numB+numC]
+        pD = param[numA+numB+numC :]
 
-    return pP, pR, pE
-
+    return pA, pB, pC, pD
 
 
 def make_varmap(var, bin_cents, circ=False):

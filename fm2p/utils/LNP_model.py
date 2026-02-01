@@ -44,7 +44,7 @@ def linear_nonlinear_poisson_model(param, X, Y, modelType, param_counts):
     Y : array_like
         Spike counts for a single cell.
     modelType : str
-        Model type string. Must contain only the character P, R, E, and/or D.
+        Model type string. Contains the 
     param_counts : array_like
         Number of parameters for each of the four model types.
 
@@ -63,56 +63,59 @@ def linear_nonlinear_poisson_model(param, X, Y, modelType, param_counts):
     rate = np.exp(u)
 
     # Roughness regularizer weight
-    b_P = 5e1
-    b_R = 5e1
-    b_E = 5e1
-    # b_D = 5e1
+    b_A = 5e1     # theta
+    b_B = 5e1     # phi
+    b_C = 5e1    # dTheta
+    b_D = 5e1    # dPhi
 
     # Start computing the Hessian
     rX = np.multiply(rate[:, np.newaxis], X)
     hessian_glm = rX.T @ X
 
     # Initialize parameter-relevant variables
-    J_P = 0
-    J_P_g = np.array([])
-    J_P_h = np.array([])
-    J_R = 0
-    J_R_g = np.array([])
-    J_R_h = np.array([])
-    J_E = 0
-    J_E_g = np.array([])
-    J_E_h = np.array([])
-    # J_D = 0
-    # J_D_g = np.array([])
-    # J_D_h = np.array([])
+    J_A = 0
+    J_A_g = np.array([])
+    J_A_h = np.array([])
+    J_B = 0
+    J_B_g = np.array([])
+    J_B_h = np.array([])
+    J_C = 0
+    J_C_g = np.array([])
+    J_C_h = np.array([])
+    J_D = 0
+    J_D_g = np.array([])
+    J_D_h = np.array([])
 
-    # Find the parameters
-    numP, numR, numE = param_counts
+    numA, numB, numDC, numD = param_counts
 
-    # param_P, param_R, param_E, param_D = fm2p.find_param(param, modelType, numP, numR, numE, numD)
-    param_P, param_R, param_E = fm2p.find_param(param, modelType, numP, numR, numE)
+    param_A, param_B, param_C, param_D = fm2p.find_param(param, modelType, numA, numB, numC, numD)
 
     gradstack = []
     hessstack = []
 
     # Compute the contribution for f, df, and the hessian
-    if param_P.size != 0:
-        J_P, J_P_g, J_P_h = fm2p.rough_penalty(param_P, b_P)
-        gradstack.extend(J_P_g.flatten())
-        hessstack.append(J_P_h)
+    if param_A.size != 0:
+        J_A, J_A_g, J_A_h = fm2p.rough_penalty(param_A, b_A)
+        gradstack.extend(J_A_g.flatten())
+        hessstack.append(J_A_h)
 
-    if param_R.size != 0:
-        J_R, J_R_g, J_R_h = fm2p.rough_penalty(param_R, b_R, circ=False)
-        gradstack.extend(J_R_g.flatten())
-        hessstack.append(J_R_h)
+    if param_B.size != 0:
+        J_B, J_B_g, J_B_h = fm2p.rough_penalty(param_B, b_B, circ=False)
+        gradstack.extend(J_B_g.flatten())
+        hessstack.append(J_B_h)
 
-    if param_E.size != 0:
-        J_E, J_E_g, J_E_h = fm2p.rough_penalty(param_E, b_E, circ=False)
-        gradstack.extend(J_E_g.flatten())
-        hessstack.append(J_E_h)
+    if param_C.size != 0:
+        J_C, J_C_g, J_C_h = fm2p.rough_penalty(param_C, b_C, circ=False)
+        gradstack.extend(J_C_g.flatten())
+        hessstack.append(J_C_h)
+
+    if param_D.size != 0:
+        J_D, J_D_g, J_D_h = fm2p.rough_penalty(param_D, b_D, circ=False)
+        gradstack.extend(J_D_g.flatten())
+        hessstack.append(J_D_h)
 
     # Compute f
-    f = np.sum(rate - Y * u) + J_P + J_R + J_E
+    f = np.sum(rate - Y * u) + J_A + J_B + J_C + J_D
 
     # Gradient
     df = np.real(X.T @ (rate - Y) + gradstack)
@@ -125,7 +128,7 @@ def linear_nonlinear_poisson_model(param, X, Y, modelType, param_counts):
 
 
 
-def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, numFolds=10, ret_for_MP=True):
+def fit_LNLP_model(behavior_input, dt, spiketrain, filter, modelType, param_counts, numFolds=10, ret_for_MP=True):
     """ Fit a linear-nonlinear-poisson model.
 
     Parameters
@@ -174,27 +177,31 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         True spike counts (for all cells).
     """
 
-    A = A_input.copy()
+    Ib = behavior_input.copy()
 
     # Index into the columns carrying parameters.
-    if 'P' not in modelType:
+    if 'A' not in modelType:
         sc = 0                  # start column
         ec = param_counts[0]    # end column
-        A[:, sc:ec] = np.zeros([np.size(A, 0), param_counts[0]]) * np.nan
-    if 'R' not in modelType:
+        Ib[:, sc:ec] = np.zeros([np.size(Ib, 0), param_counts[0]]) * np.nan
+    if 'B' not in modelType:
         sc = param_counts[0]
         ec = param_counts[0]+param_counts[1]
-        A[:, sc:ec] = np.zeros([np.size(A, 0), param_counts[1]]) * np.nan
-    if 'E' not in modelType:
+        Ib[:, sc:ec] = np.zeros([np.size(Ib, 0), param_counts[1]]) * np.nan
+    if 'C' not in modelType:
         sc = param_counts[0]+param_counts[1]
         ec = param_counts[0]+param_counts[1]+param_counts[2]
-        A[:, sc:ec] = np.zeros([np.size(A, 0), param_counts[2]]) * np.nan
+        Ib[:, sc:ec] = np.zeros([np.size(Ib, 0), param_counts[2]]) * np.nan
+    if 'D' not in modelType:
+        sc = param_counts[0]+param_counts[1]+param_counts[2]
+        ec = param_counts[0]+param_counts[1]+param_counts[2]+param_counts[3]
+        Ib[:, sc:ec] = np.zeros([np.size(Ib, 0), param_counts[3]]) * np.nan
 
     # Delete columns of all NaNs
-    A = A[:, np.sum(np.isnan(A), axis=0)==0]
+    Ib = Ib[:, np.sum(np.isnan(Ib), axis=0)==0]
 
     # Divide the data up into 5*num_folds pieces
-    numCol = np.size(A, 1)
+    numCol = np.size(Ib, 1)
     sections = numFolds * 5
     edges = np.round(np.linspace(0, len(spiketrain)-1, sections + 1)).astype(int)
 
@@ -224,14 +231,14 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         test_spikes = spiketrain[test_ind]
         smooth_spikes_test = np.convolve(test_spikes, filter, 'same') 
         smooth_fr_test = smooth_spikes_test / dt
-        test_A = A[test_ind,:]
+        test_Ib = Ib[test_ind,:]
 
         # Training data
         train_ind = np.setdiff1d(np.arange(len(spiketrain)), test_ind)
         train_spikes = spiketrain[train_ind]
         smooth_spikes_train = np.convolve(train_spikes, filter, 'same')
         smooth_fr_train = smooth_spikes_train / dt
-        train_A = A[train_ind,:]
+        train_Ib = Ib[train_ind,:]
 
         if k == 0:
             init_param = 1e-3 * np.random.randn(numCol)
@@ -245,7 +252,7 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         res = minimize(
             fm2p.linear_nonlinear_poisson_model,
             init_param,
-            args=(train_A, train_spikes, modelType, param_counts),
+            args=(train_Ib, train_spikes, modelType, param_counts),
             method='Newton-CG',
             jac=True,
             hess='2-point',
@@ -254,7 +261,7 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         param = res.x
 
         # Test data
-        fr_hat_test = np.exp(test_A @ param) / dt
+        fr_hat_test = np.exp(test_Ib @ param) / dt
         smooth_fr_hat_test = np.convolve(fr_hat_test, filter, 'same') 
 
         sse = np.sum((smooth_fr_hat_test - smooth_fr_test) ** 2)
@@ -263,7 +270,7 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
 
         correlation_test = pearsonr(smooth_fr_test, smooth_fr_hat_test)[0]
 
-        r = np.exp(test_A @ param)
+        r = np.exp(test_Ib @ param)
         n = test_spikes
         meanFR_test = np.nanmean(test_spikes)
 
@@ -284,7 +291,7 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         ]
 
         # Train data
-        fr_hat_train = np.exp(train_A @ param) / dt
+        fr_hat_train = np.exp(train_Ib @ param) / dt
         smooth_fr_hat_train = np.convolve(fr_hat_train, filter, 'same') 
 
         sse = np.sum((smooth_fr_hat_train - smooth_fr_train) ** 2)
@@ -293,7 +300,7 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
 
         correlation_train = pearsonr(smooth_fr_train, smooth_fr_hat_train)[0]
 
-        r_train = np.exp(train_A @ param)
+        r_train = np.exp(train_Ib @ param)
         n_train = train_spikes
         meanFR_train = np.nanmean(train_spikes)
 
@@ -326,6 +333,15 @@ def fit_LNLP_model(A_input, dt, spiketrain, filter, modelType, param_counts, num
         return testFit, trainFit, param_mean, paramMat, np.array(predSpikes), np.array(trueSpikes)
 
 
+def get_colors():
+    return [
+        '#0d0887',
+        '#9c179e',
+        '#ed7953',
+        '#f0f921'
+    ]
+
+
 def fit_all_LNLP_models(data_vars, data_bins, spikes, savedir):
     """ Fit all neurons to LNLP model for all model combinations.
 
@@ -353,57 +369,65 @@ def fit_all_LNLP_models(data_vars, data_bins, spikes, savedir):
         See output of function `fit_LNLP_model` for more details on
         each output.
     """
+
+    colors = get_colors()
+
     pdf_path = os.path.join(savedir, 'model_fits.pdf')
     pdf = PdfPages(pdf_path)
 
-    mapP, mapR, mapE = data_vars
-    pupil_bins, ret_bins, ego_bins = data_bins
+    mapA, mapB, mapC, mapD = data_vars
+    A_bins, B_bins, C_bins, D_bins = data_bins
 
     # Visualize the ont-hot encoded maps of behavior variables
-    fig, [ax1,ax2,ax3] = plt.subplots(1,3,dpi=300,figsize=(6,5))
-    ax1.imshow(mapP, aspect=0.005)
-    ax2.imshow(mapR, aspect=0.015)
-    ax3.imshow(mapE, aspect=0.015)
+    fig, [ax1,ax2,ax3,ax4] = plt.subplots(1,4,dpi=300,figsize=(6,5))
+    ax1.imshow(mapA, aspect=0.005)
+    ax2.imshow(mapB, aspect=0.015)
+    ax3.imshow(mapC, aspect=0.015)
+    ax4.imshow(mapD, aspect=0.015)
     ax1.axis('off')
     ax2.axis('off')
     ax3.axis('off')
-    ax1.set_title('pupil')
-    ax2.set_title('retinotopic')
-    ax3.set_title('egocentric')
+    ax4.axis('off')
+    ax1.set_title('theta')
+    ax2.set_title('phi')
+    ax3.set_title('dTheta')
+    ax4.set_title('dPhi')
     fig.suptitle('One-hot encoded behavior variables')
     fig.tight_layout()
     pdf.savefig()
     plt.close()
 
     fig, [[ax1,ax2],[ax3,ax4]] = plt.subplots(2,2,dpi=300,figsize=(4,3))
-    ax1.plot(pupil_bins, np.mean(mapP, 0), color='tab:blue')
-    ax2.plot(ret_bins, np.mean(mapR, 0), color='tab:orange')
-    ax3.plot(ego_bins, np.mean(mapE, 0), color='tab:green')
+    ax1.plot(A_bins, np.mean(mapA, 0), color=colors[0])
+    ax2.plot(B_bins, np.mean(mapB, 0), color=colors[1])
+    ax3.plot(C_bins, np.mean(mapC, 0), color=colors[2])
+    ax4.plot(D_bins, np.mean(mapD, 0), color=colors[3])
     ax1.set_ylim([0,0.4])
     ax2.set_ylim([0,0.1])
     ax3.set_ylim([0,0.1])
-    ax1.set_xlabel('pupil (deg)')
-    ax2.set_xlabel('retinotopic (deg)')
-    ax3.set_xlabel('egocentric (deg)')
-    ax4.axis('off')
+    ax1.set_xlabel('theta (deg)')
+    ax2.set_xlabel('phi (deg)')
+    ax3.set_xlabel('dTheta (deg/s)')
+    ax4.set_xlabel('dPhi (deg/s)')
     fig.suptitle('Behavioral occupancy')
     fig.tight_layout()
     pdf.savefig()
     plt.close()
 
-    A = np.concatenate([mapP, mapR, mapE], axis=1)
-    A = A[np.sum(np.isnan(A), axis=1)==0, :]
+    Ib = np.concatenate([mapA, mapB, mapC, mapD], axis=1)
+    Ib = Ib[np.sum(np.isnan(Ib), axis=1)==0, :]
 
     param_counts = [
-        len(pupil_bins),
-        len(ret_bins),
-        len(ego_bins)
+        len(A_bins),
+        len(B_bins),
+        len(C_bins),
+        len(D_bins)
     ]
 
     # Generate all model combinations
     model_keys = []
     for count in np.arange(1,5):
-        c_ = [''.join(x) for x in list(combinations(['P','R','E'], count))]
+        c_ = [''.join(x) for x in list(combinations(['A','B','C','D'], count))]
         model_keys.extend(c_)
 
     proc_cells = np.arange(np.size(spikes,0))
@@ -425,7 +449,7 @@ def fit_all_LNLP_models(data_vars, data_bins, spikes, savedir):
         param_mp = [
             pool.apply_async(
                 fit_LNLP_model,
-                args=(A, 0.05, spikes[ci,:], np.ones(8), mk, param_counts, 10, True)
+                args=(Ib, 0.05, spikes[ci,:], np.ones(8), mk, param_counts, 10, True)
             ) for ci in proc_cells
         ]
 

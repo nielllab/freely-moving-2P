@@ -86,16 +86,29 @@ def fit_LNLP(cfg):
     print('  -> Analyzing data for config file: {}'.format(cfg['spath']))
     print('  -> Using Model 1 (Hardcastle LNLP)')
 
-    reclist = cfg['include_recordings']
+    recording_names = fm2p.list_subdirs(cfg['spath'], givepath=False)
+    num_recordings = len(recording_names)
 
-    ego_bins = np.linspace(-180, 180, 19)
-    retino_bins = np.linspace(-180, 180, 19) # 20 deg bins
-    pupil_bins = np.linspace(45, 95, 11) # 5 deg bins
+    if (type(cfg['include_recordings']) == list) and (len(cfg['include_recordings']) > 0):
+        num_specified_recordings = len(cfg['include_recordings'])
+    elif (type(cfg['include_recordings']) == list) and (len(cfg['include_recordings']) == 0):
+        num_specified_recordings = num_recordings
+    else:
+        print('Issue determining how many recordings were specified.')
+        num_specified_recordings = -1
 
-    var_bins = [pupil_bins, retino_bins, ego_bins]
+    if num_recordings != num_specified_recordings:
+        recording_names = [x for x in recording_names if x in cfg['include_recordings'] and 'sn' not in x]
+
+    A_bins = np.linspace(-15, 15, 10) # theta
+    B_bins = np.linspace(-15, 15, 10) # phi
+    C_bins = np.linspace(-60, 60, 12) # dTheta
+    D_bins = np.linspace(-60, 60, 12) # dPhi
+
+    var_bins = [A_bins, B_bins, C_bins, D_bins]
 
     # Iterate through each recording (only if it is specified in the cfg file, ignore the rest).
-    for rname in reclist:
+    for rnum, rname in enumerate(recording_names):
 
         print('  -> Fitting model for {}.'.format(rname))
         
@@ -108,23 +121,53 @@ def fit_LNLP(cfg):
 
         print('  -> Interpolating time and setting up arrays.')
 
-        # Pupil position relative to the animal's head. 0deg is looking forward parallel to nose
-        pupil = data['pupil_from_head'].copy()
-        speed = data['speed'].copy()
-        egocentric = data['egocentric'].copy()
-        retinocentric = data['retinocentric'].copy()
-        spikes = data['oasis_spks'].copy()
+        eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
+        eyeT = eyeT - eyeT[0]
 
-        # Apply lag BEFORE dropping stationary frames
+        if 'dPhi' not in data.keys():
+            phi_full = np.rad2deg(data['phi'][data['eyeT_startInd']:data['eyeT_endInd']])
+            dPhi  = np.diff(fm2p.interp_short_gaps(phi_full, 5)) / np.diff(eyeT)
+            dPhi = np.roll(dPhi, -2)
+            data['dPhi'] = dPhi
+
+        if 'dTheta' not in data.keys():
+
+            if 'dEye' not in data.keys():
+                t = eyeT.copy()[:-1]
+                t1 = t + (np.diff(eyeT) / 2)
+                theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
+                dEye  = np.diff(fm2p.interp_short_gaps(theta_full, 5)) / np.diff(eyeT)
+                data['dTheta'] = np.roll(dEye, -2) # static offset correction
+                data['eyeT1'] = t1
+
+            else:
+                data['dTheta'] = data['dEye'].copy()
+
+        theta = data['theta_interp'].copy()
+        phi = data['phi'].copy()
+
+        # interpolate dEye values to twop data
+        dTheta = fm2p.interp_short_gaps(data['dTheta'])
+        dTheta = fm2p.interpT(dTheta, data['eyeT1'], data['twopT'])
+        dPhi = fm2p.interp_short_gaps(data['dPhi'])
+        dPhi = fm2p.interpT(dPhi, data['eyeT1'], data['twopT'])
+
+        spikes = data['norm_spikes'].copy()
+        ltdk = data['ltdk_state_vec'].copy()
+        speed = data['speed'].copy()
+
+        # Apply lag before dropping stationary frames
+        # *** FOR NOW, JUST USE LIGHT PERIOD ***
         speed = np.append(speed, speed[-1])
-        use = speed > cfg['speed_thresh']
+        use = (speed > cfg['speed_thresh']) * ltdk
 
         # Bin behavior data into variable maps. At the same time, be sure to drop the
         # stationary periods.
-        mapP = fm2p.make_varmap(pupil[use], pupil_bins)
-        mapR = fm2p.make_varmap(retinocentric[use], retino_bins, circ=True)
-        mapE = fm2p.make_varmap(egocentric[use], ego_bins, circ=True)
-        var_maps = [mapP, mapR, mapE]
+        mapA = fm2p.make_varmap(theta[use], A_bins)
+        mapB = fm2p.make_varmap(phi[use], B_bins)
+        mapC = fm2p.make_varmap(dTheta[use], C_bins)
+        mapD = fm2p.make_varmap(dPhi[use], D_bins)
+        var_maps = [mapA, mapB, mapC, mapD]
 
         if cfg['compute_model_performance']:
             for lag_val in cfg['lags']:
@@ -163,7 +206,7 @@ def fit_LNLP(cfg):
         # Calculate the model fits for the null spikes (rolled random temporal distances from
         # ground truth). Do I need to calculate a different null distribution across rolls? Probably
         # not. 
-        if cfg['compute_null_model_performance']:
+        if cfg['compute_null_performance']:
 
             spiketrains = np.zeros([np.size(spikes,0), np.sum(use)]) * np.nan
 
@@ -206,15 +249,17 @@ def fit_model():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-cfg', '--cfg', type=str, default=None)
-    parser.add_argument('-v', '--model_version', type=int, default=4)
+    parser.add_argument('-v', '--model_version', type=str, default='LNLP')
     args = parser.parse_args()
 
-    if args.model_version is None:
-        modver = fm2p.get_string_input('Which model version should be fit? (enter an integer)')
-    elif args.model_version is not None:
-        modver = args.model_version
+    # if args.model_version is None:
+    #     modver = fm2p.get_string_input('Which model version should be fit? (enter an str)')
+    # elif args.model_version is not None:
+    #     modver = args.model_version
+
+    modver = args.model_version
     
-    if modver < 4:
+    if (cfg is None) and (modver == 'LNLP' or modver == 'simpleGLM'):
 
         if args.cfg is None:
             cfg_path = fm2p.select_file(
@@ -223,12 +268,16 @@ def fit_model():
             )
         elif args.cfg is not None:
             cfg_path = args.cfg
+            
         cfg = fm2p.read_yaml(cfg_path)
 
-    if modver == 1:
+
+    if modver == 'LNLP':
+    
         fit_LNLP(cfg)
 
-    elif modver == 2:
+
+    elif modver == 'simpleGLM':
 
         opts = {
             'learning_rate': 0.1,
@@ -241,7 +290,8 @@ def fit_model():
 
         fit_simple_GLM(cfg, opts, inds=np.arange(15))
 
-    elif modver == 3:
+
+    elif modver == 'mcGLM':
 
         recording_names = fm2p.list_subdirs(cfg['spath'], givepath=False)
         num_recordings = len(recording_names)
@@ -263,7 +313,8 @@ def fit_model():
         
             fm2p.fit_multicell_GLM(preproc_path)
 
-    elif modver == 4:
+
+    elif modver == 'mcGLM_all':
 
         preproc_path = fm2p.select_file(
             'Select preprocessed file.',
@@ -277,12 +328,11 @@ def fit_model():
 
 if __name__ == '__main__':
 
-    # fit_model()
+    fit_model()
 
-    preproc_paths = fm2p.find('*fm*_preproc.h5', '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings')
-
-    print('Found {} recordings.'.format(len(preproc_paths)))
-
-    for preproc_path in tqdm(preproc_paths):
-        _ = fm2p.run_all_GLMs(preproc_path)
+    # for batch processing....
+    # preproc_paths = fm2p.find('*fm*_preproc.h5', '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings')
+    # print('Found {} recordings.'.format(len(preproc_paths)))
+    # for preproc_path in tqdm(preproc_paths):
+    #     _ = fm2p.run_all_GLMs(preproc_path)
 
