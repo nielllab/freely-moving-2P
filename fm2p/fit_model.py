@@ -72,16 +72,14 @@ def fit_simple_GLM(cfg, opts, inds=None):
 def fit_LNLP(cfg):
     """ Fit the linear-nonlinear-Poisson model to neural/behavior data.
 
-    'Model 1'
-
     Parameters
     ----------
     cfgh : dict
         Config dictionary.
     """
 
-    if cfg is None:
-        cfg = fm2p.make_default_cfg()
+    # if cfg is None:
+    #     cfg = fm2p.make_default_cfg()
 
     print('  -> Analyzing data for config file: {}'.format(cfg['spath']))
     print('  -> Using Model 1 (Hardcastle LNLP)')
@@ -114,7 +112,7 @@ def fit_LNLP(cfg):
         
         print('  -> Reading preprocessed data.')
 
-        h5_path = cfg['{}_preproc_file'.format(rname)]
+        h5_path = fm2p.find('*preproc.h5', os.path.join(cfg['spath'], rname), MR=True)
         data = fm2p.read_h5(h5_path)
 
         rec_dir = os.path.split(h5_path)[0]
@@ -144,7 +142,7 @@ def fit_LNLP(cfg):
                 data['dTheta'] = data['dEye'].copy()
 
         theta = data['theta_interp'].copy()
-        phi = data['phi'].copy()
+        phi = data['phi_interp'].copy()
 
         # interpolate dEye values to twop data
         dTheta = fm2p.interp_short_gaps(data['dTheta'])
@@ -158,7 +156,7 @@ def fit_LNLP(cfg):
 
         # Apply lag before dropping stationary frames
         # *** FOR NOW, JUST USE LIGHT PERIOD ***
-        speed = np.append(speed, speed[-1])
+        # speed = np.append(speed, speed[-1])
         use = (speed > cfg['speed_thresh']) * ltdk
 
         # Bin behavior data into variable maps. At the same time, be sure to drop the
@@ -257,6 +255,7 @@ def fit_model():
     # elif args.model_version is not None:
     #     modver = args.model_version
 
+    cfg = args.cfg
     modver = args.model_version
     
     if (cfg is None) and (modver == 'LNLP' or modver == 'simpleGLM'):
@@ -268,12 +267,13 @@ def fit_model():
             )
         elif args.cfg is not None:
             cfg_path = args.cfg
-            
-        cfg = fm2p.read_yaml(cfg_path)
+    elif cfg is not None:
+        cfg_path = args.cfg
 
 
     if modver == 'LNLP':
-    
+
+        cfg = fm2p.read_yaml(cfg_path)
         fit_LNLP(cfg)
 
 
@@ -287,6 +287,7 @@ def fit_model():
             'num_lags': 30,  # 30 lags is access to 4.0 seconds
             'multiprocess': False
         }
+        cfg = fm2p.read_yaml(cfg_path)
 
         fit_simple_GLM(cfg, opts, inds=np.arange(15))
 

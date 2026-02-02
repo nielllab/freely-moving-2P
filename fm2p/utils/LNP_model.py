@@ -86,7 +86,7 @@ def linear_nonlinear_poisson_model(param, X, Y, modelType, param_counts):
     J_D_g = np.array([])
     J_D_h = np.array([])
 
-    numA, numB, numDC, numD = param_counts
+    numA, numB, numC, numD = param_counts
 
     param_A, param_B, param_C, param_D = fm2p.find_param(param, modelType, numA, numB, numC, numD)
 
@@ -206,7 +206,7 @@ def fit_LNLP_model(behavior_input, dt, spiketrain, filter, modelType, param_coun
     edges = np.round(np.linspace(0, len(spiketrain)-1, sections + 1)).astype(int)
 
     # Initialize matrices
-    testFit = np.full((numFolds, 6), np.nan)
+    testFit = np.full((numFolds, 6), np.nan) # will save out six parameters
     trainFit = np.full((numFolds, 6), np.nan)
     paramMat = np.full((numFolds, numCol), np.nan)
     predSpikes = []
