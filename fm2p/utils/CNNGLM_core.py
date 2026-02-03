@@ -2,10 +2,14 @@
 import tensorflow as tf
 import numpy as np
 import fm2p
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
 
+np.random.seed(0)
 
 class EncodingCNNGLM(tf.keras.Model):
-    def __init__(self, n_neurons, n_predictors, fs=7.5, l2_scale=9.17e-7):
+    def __init__(self, n_neurons, n_predictors, fs=7.5, l2_scale=0):
         """
         CNN-GLM Encoding Model based on Minderer et al., 2019.
         
@@ -23,8 +27,8 @@ class EncodingCNNGLM(tf.keras.Model):
         self.l2_reg = tf.keras.regularizers.L2(l2_scale)
         
         # Dimensions based on paper description
-        snippet_duration_s = 4.0
-        filter_duration_s = 0.6
+        snippet_duration_s = 5.0 # started as 4.0
+        filter_duration_s = 0.15  # started as 0.6
         
         # Convert seconds to frames for your fs
         self.input_frames = int(snippet_duration_s * fs)
@@ -53,12 +57,12 @@ class EncodingCNNGLM(tf.keras.Model):
                                             kernel_initializer=self._custom_he_init(fan_in_dense1),
                                             kernel_regularizer=self.l2_reg)
         
-        self.dense_bottleneck = tf.keras.layers.Dense(n_predictors, 
+        self.dense_bottleneck = tf.keras.layers.Dense(32, 
                                                       kernel_initializer=self._custom_he_init(128),
                                                       kernel_regularizer=self.l2_reg)
         
         self.readout = tf.keras.layers.Dense(n_neurons, 
-                                             kernel_initializer=self._custom_he_init(n_predictors),
+                                             kernel_initializer=self._custom_he_init(32),
                                              bias_initializer='zeros',
                                              kernel_regularizer=self.l2_reg)
         
@@ -118,11 +122,11 @@ class EncodingCNNGLM(tf.keras.Model):
         
         total_log_pred = cnn_log_pred + vrf_prediction + poly_offset # prev transposed crf
         
-        return tf.math.exp(total_log_pred)
+        return tf.math.softplus(total_log_pred)
 
 def poisson_loss(y_true, y_pred):
 
-    return tf.keras.losses.poisson(y_true, y_pred)
+    return tf.keras.losses.poisson(y_true, y_pred)#  + tf.math.lgamma(y_true + 1.0) # make it pos when improving... more intuitive
 
 
 def create_encoding_dataset(
@@ -173,6 +177,8 @@ def create_encoding_dataset(
 
     if vrf_predictions is None:
         vrf_predictions = np.zeros_like(neural_data, dtype=np.float32)
+
+    
 
     def data_generator():
         indices = np.arange(max_start_idx)
@@ -260,9 +266,9 @@ if __name__ == "__main__":
 
         behavior_vars = {
             # head positions
-            'yaw': data['head_yaw_deg'].copy(),
-            'pitch': data['pitch_twop_interp'].copy(),
-            'roll': data['roll_twop_interp'].copy(),
+            # 'yaw': data['head_yaw_deg'].copy(),
+            'pitch': data['pitch_twop_interp'].copy() - np.nanmean(data['pitch_twop_interp']),
+            'roll': data['roll_twop_interp'].copy() - np.nanmean(data['roll_twop_interp']),
             # gaze
             # 'gaze': gaze,
             # 'dGaze': dGaze,
@@ -279,11 +285,20 @@ if __name__ == "__main__":
             # head accelerations
             'acc_x': data['acc_x_twop_interp'].copy(),
             'acc_y': data['acc_y_twop_interp'].copy(),
-            'acc_z': data['acc_z_twop_interp'].copy()
+            'acc_z': data['acc_z_twop_interp'].copy(),
+            # misc
+            'speed': data['speed'].copy(),
+            'head_x': data['head_x'].copy(),
+            'head_y': data['head_y'].copy(),
+            'pupil': fm2p.interpT(
+                data['longaxis'].copy()[data['eyeT_startInd']:data['eyeT_endInd']],
+                eyeT,
+                data['twopT']
+            )
         }
 
-        if len(behavior_vars['yaw']) > len(data['norm_spikes']):
-            behavior_vars['yaw'] = behavior_vars['yaw'][:-1]
+        # if len(behavior_vars['yaw']) > len(data['norm_dFF']):
+        #     behavior_vars['yaw'] = behavior_vars['yaw'][:-1]
 
     elif not hasIMU:
 
@@ -296,7 +311,9 @@ if __name__ == "__main__":
             'dPhi': dPhi
         }
 
-    raw_dff = data['raw_dFF'].copy().astype(np.float32)
+    raw_dff = np.zeros_like(data['raw_dFF'])
+    for c in range(np.size(data['raw_dFF'], 0)):
+        raw_dff[c,:] = fm2p.convfilt(data['raw_dFF'].copy()[c,:], 10).astype(np.float32)
 
     raw_task_vars = np.zeros([
         len(behavior_vars.keys()),
@@ -314,6 +331,16 @@ if __name__ == "__main__":
 
     raw_task_vars = raw_task_vars.T
     raw_dff = raw_dff.T
+    
+    # Standardize predictors (zero mean, unit variance) to help convergence
+    scaler = StandardScaler()
+    raw_task_vars = scaler.fit_transform(raw_task_vars)
+    
+    # Normalize neural data to [0, 1] range per neuron to stabilize training
+    raw_dff = np.maximum(raw_dff, 0) # Ensure non-negative targets
+    dff_max = np.max(raw_dff, axis=0, keepdims=True)
+    dff_max[dff_max == 0] = 1.0 # Avoid division by zero
+    raw_dff = raw_dff / dff_max
 
     N_NEURONS = np.size(raw_dff, 1)
     N_PREDICTORS = np.size(raw_task_vars, 1)
@@ -325,7 +352,7 @@ if __name__ == "__main__":
     raw_vrf = None 
 
     # 80/20 split
-    split_idx = int(0.8 * N_SAMPLES)
+    split_idx = int(0.7 * N_SAMPLES)
 
     # dataset/window parameters (must match create_encoding_dataset)
     snippet_len_s = 4.0
@@ -362,7 +389,8 @@ if __name__ == "__main__":
 
     model = EncodingCNNGLM(n_neurons=N_NEURONS, n_predictors=N_PREDICTORS, fs=FS)
     
-    opt = tf.keras.optimizers.Adam(learning_rate=0.0027, beta_1=0.89, beta_2=0.9999)
+    # started as learning_rate=0.0027, beta_1=0.89, beta_2=0.9999
+    opt = tf.keras.optimizers.Adam(learning_rate=0.01, beta_1=0.89, beta_2=0.9999)
     
     model.compile(optimizer=opt, loss=poisson_loss)
     
@@ -375,3 +403,73 @@ if __name__ == "__main__":
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps
     )
+
+    print("\n--- Model Evaluation ---")
+
+    # 1. Display final training performance from history
+    final_train_loss = history.history['loss'][-1]
+    final_val_loss = history.history['val_loss'][-1]
+    print(f"Final Training Loss: {final_train_loss:.4f}")
+    print(f"Final Validation Loss: {final_val_loss:.4f}")
+
+    # 2. Get predictions to calculate explained variance
+    print("Generating predictions for validation set...")
+    all_y_pred = model.predict(val_ds, steps=validation_steps, verbose=1)
+
+    # To avoid TensorFlow eager/graph mode iteration errors, we will reconstruct
+    # the ground truth labels by re-running the generator logic with NumPy.
+    print("Collecting true values for validation set (using NumPy)...")
+    
+    val_neural_data = raw_dff[split_idx:]
+    
+    # Replicate parameters from create_encoding_dataset
+    snippet_len_s = 4.0
+    snippet_len_frames = int(snippet_len_s * FS)
+    target_delay_s = 3.0
+    target_offset_frames = int(target_delay_s * FS)
+    
+    max_start_idx = len(val_neural_data) - snippet_len_frames
+    
+    # For validation, shuffle is False, so indices are sequential.
+    val_indices = np.arange(max_start_idx)
+    
+    all_y_true = np.array([val_neural_data[start_i + target_offset_frames] for start_i in val_indices])
+
+    # The number of predictions from model.predict might be larger than the actual
+    # number of validation windows due to batch padding. Trim predictions to match.
+    if len(all_y_pred) > len(all_y_true):
+        all_y_pred = all_y_pred[:len(all_y_true)]
+        
+    # 3. Calculate explained variance for each neuron
+    explained_variances = np.zeros(N_NEURONS)
+    for i in range(N_NEURONS):
+        explained_variances[i] = fm2p.calc_r2(all_y_true[:, i], all_y_pred[:, i])
+
+    print(f"\nMean Explained Variance (R^2) across all neurons: {np.mean(explained_variances):.4f}")
+
+    # 4. Find and plot the best cell's activity vs. prediction
+    best_cell_idx = np.argmax(explained_variances)
+    best_cell_ev = explained_variances[best_cell_idx]
+
+    plt.figure(figsize=(15, 6))
+    plt.plot(all_y_true[:500, best_cell_idx], label='True Firing Rate (Norm)', color='k', linewidth=1.5)
+    plt.plot(all_y_pred[:500, best_cell_idx], label='Predicted Firing Rate (Norm)', color='r', alpha=0.8, linewidth=1.5)
+    plt.title(f'Best Cell (Index: {best_cell_idx}) - Explained Variance: {best_cell_ev:.3f}')
+    plt.xlabel('Time (frames in validation set)')
+    plt.ylabel('Normalized Deconvolved Fluorescence')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    # 5. Plot the distribution of explained variances
+    plt.figure(figsize=(8, 6))
+    plt.hist(explained_variances, bins=30, edgecolor='black')
+    plt.title('Distribution of Explained Variance Across Neurons')
+    plt.xlabel('Explained Variance (R²)')
+    plt.ylabel('Number of Neurons')
+    plt.axvline(np.mean(explained_variances), color='r', linestyle='--', label=f'Mean: {np.mean(explained_variances):.3f}')
+    plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.xlim([-.5,.5])
+
+    plt.show()
+
