@@ -10,7 +10,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 np.random.seed(0)
 
 class EncodingCNNGLM(tf.keras.Model):
-    def __init__(self, n_neurons, n_predictors, fs=7.5, l2_scale=0):
+    def __init__(self, n_neurons, n_predictors, fs=7.5, l2_scale=0.):
         """
         CNN-GLM Encoding Model based on Minderer et al., 2019.
         
@@ -29,11 +29,12 @@ class EncodingCNNGLM(tf.keras.Model):
         
         # Dimensions based on paper description
         snippet_duration_s = 4.0 # started as 4.0
-        filter_duration_s = 0.15  # started as 0.6
+        # filter_duration_s = 0.15  # started as 0.6
         
         # Convert seconds to frames for your fs
         self.input_frames = int(snippet_duration_s * fs)
-        self.filter_size = int(filter_duration_s * fs)
+        # self.filter_size = int(filter_duration_s * fs)
+        self.filter_size = 1
         
         self.conv1 = tf.keras.layers.Conv1D(
             32, self.filter_size, padding='same',
@@ -393,8 +394,7 @@ if __name__ == "__main__":
         shuffle=False
     )
 
-    # model = EncodingCNNGLM(n_neurons=N_NEURONS, n_predictors=N_PREDICTORS, fs=FS, l2_scale=1e-2)
-    model = EncodingCNNGLM(n_neurons=N_NEURONS, n_predictors=N_PREDICTORS, fs=FS, l2_scale=1e-2)
+    model = EncodingCNNGLM(n_neurons=N_NEURONS, n_predictors=N_PREDICTORS, fs=FS, l2_scale=1e-6) # was 1e-2
     
     # started as learning_rate=0.0027, beta_1=0.89, beta_2=0.9999
     opt = tf.keras.optimizers.Adam(learning_rate=1e-2, beta_1=0.89, beta_2=0.9999)

@@ -29,6 +29,8 @@ class singlecell_GLM:
         # for calculating z score, hold onto the mean and std so it can be applied to novel data
         self.X_means = None
         self.X_stds = None
+        self.y_means = None
+        self.y_stds = None
 
 
     def _mse(self, y, y_hat):
@@ -138,6 +140,7 @@ class singlecell_GLM:
         X_std = np.std(X, axis=1, keepdims=True)
         X_std[X_std == 0] = 1.0  # Prevent division by zero
         X_norm = (X - X_mean) / X_std
+        # Input X and y are assumed to be already normalized by fit()
         
         # Normalize target
         y_mean = np.mean(y)
@@ -150,6 +153,7 @@ class singlecell_GLM:
         
         # Add bias term as first column: shape becomes (nFrames, nBehaviors+1)
         X_bias = np.c_[np.ones(n_frames), X_norm.T]
+        X_bias = np.c_[np.ones(n_frames), X.T]
         
         loss_history = np.zeros(self.epochs) * np.nan
         
@@ -159,10 +163,12 @@ class singlecell_GLM:
             
             # Calculate loss
             lossval = self._loss(y_norm, y_hat, weights)
+            lossval = self._loss(y, y_hat, weights)
             loss_history[epoch] = lossval
             
             # Gradient calculation
             y_diff = y_hat - y_norm  # Shape: (nFrames,)
+            y_diff = y_hat - y  # Shape: (nFrames,)
             gradient = np.dot(X_bias.T, y_diff) / n_frames  # Shape: (nBehaviors+1,)
             
             # Apply L2 regularization (ridge) - don't regularize bias term
@@ -182,6 +188,7 @@ class singlecell_GLM:
             
             # Compute MSE for monitoring (using normalized data)
             mse = self._mse(y_norm, y_hat)
+            mse = self._mse(y, y_hat)
             
             if verbose and (epoch == 0):
                 print(f'Initial pass:  loss={lossval:.4f}  MSE={mse:.4f}')
@@ -194,9 +201,11 @@ class singlecell_GLM:
         # Final RMSE (in normalized space)
         final_y_hat = np.dot(X_bias, weights)
         rmse_norm = np.sqrt(self._mse(y_norm, final_y_hat))
+        rmse_norm = np.sqrt(self._mse(y, final_y_hat))
         
         # Denormalize RMSE back to original scale
         rmse = rmse_norm * y_std
+        rmse = rmse_norm # Caller handles scaling
         
         return weights, loss_history, rmse
 
@@ -244,11 +253,17 @@ class singlecell_GLM:
             all_rmse = np.zeros(n_cells) * np.nan
             
             X = behavior.copy()
+            # Calculate Y statistics per cell
+            self.y_means = np.mean(spikes, axis=1)
+            self.y_stds = np.std(spikes, axis=1)
+            self.y_stds[self.y_stds == 0] = 1e-8
             
             # Fit each cell independently
             for c in tqdm(range(n_cells), desc='Fitting cells'):
                 y = spikes[c, :].copy()
                 w, lh, rmse = self._fit_single(X, y, verbose=False)
+                y = (spikes[c, :] - self.y_means[c]) / self.y_stds[c]
+                w, lh, rmse = self._fit_single(X_norm, y, verbose=False)
                 
                 all_weights[c, :] = w
                 all_loss_histories[c, :] = lh
@@ -279,6 +294,10 @@ class singlecell_GLM:
         if X.ndim == 1:
             X = X[np.newaxis, :]
         
+        # Normalize X using stored stats
+        if self.X_means is not None:
+            X = (X - self.X_means) / self.X_stds
+
         n_frames = X.shape[1]
         
         # Add bias column: shape (nFrames, nBehaviors+1)
@@ -292,6 +311,13 @@ class singlecell_GLM:
             # Multiple cells: weights is (nCells, nBehaviors+1)
             # Result shape: (nFrames, nCells)
             y_hat = np.dot(X_bias, self.weights.T)
+            
+        # Denormalize predictions
+        if self.y_means is not None:
+            if y_hat.ndim == 1:
+                y_hat = y_hat * self.y_stds + self.y_means
+            else:
+                y_hat = y_hat * self.y_stds[np.newaxis, :] + self.y_means[np.newaxis, :]
         
         return y_hat
     

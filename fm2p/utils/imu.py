@@ -107,13 +107,6 @@ def read_IMU(vals_path, time_path):
     ]
 
     print('  -> Starting sensor fusion with {} cores.'.format(n_jobs))
-    # IMU = fm2p.ImuOrientation()
-
-    # for i in tqdm(range(n_samps)):
-    #     roll_pitch[i] = IMU.process((
-    #         df[['acc_x','acc_y','acc_z']].iloc[i].to_numpy(),
-    #         df[['gyro_x','gyro_y','gyro_z']].iloc[i].to_numpy(),
-    #     ))
 
     with multiprocessing.Pool(processes=n_jobs) as pool:
         roll_pitch = list(
