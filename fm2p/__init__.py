@@ -91,7 +91,9 @@ from .utils.filter import (
     convfilt,
     sub2ind,
     nanmedfilt,
-    convolve2d
+    convolve2d,
+    rolling_average,
+    rolling_average_1d
 )
 
 from .utils.topcam import Topcam
@@ -342,3 +344,18 @@ from .register_animals import (
 from .merge_animal_essentials import merge_animal_essentials
 
 from .utils.singlecell_GLM import singlecell_GLM
+
+from .denoise_tif import (
+    denoise_tif_1d,
+    denoise_tif_2d
+    # denoise_tif
+)
+
+from .utils.img_stacks import (
+    norm_arr,
+    load_tif_stack,
+    register_stack_to_template,
+    multipart_tif_to_avi,
+    read_tif_frame,
+    read_tif_until
+)

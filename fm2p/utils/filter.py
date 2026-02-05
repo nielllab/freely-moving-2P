@@ -212,3 +212,69 @@ def convolve2d(image, kernel):
             result[i, j] = np.sum(region * kernel)
 
     return result
+
+
+def rolling_average(arr, window=8, ensure_shape_match=False):
+    """ Compute the rolling average of a 3D array.
+    
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input 3D array.
+    window : int
+        Size of the rolling window. Default is 8.
+
+    Returns
+    -------
+    rolled_array : np.ndarray
+        3D array with the rolling average applied.
+    """
+
+    shape = (arr.shape[0] - window + 1, window) + arr.shape[1:]
+    strides = (arr.strides[0],) + arr.strides
+    windows = np.lib.stride_tricks.as_strided(arr, shape=shape, strides=strides)
+    rolled_array = windows.mean(axis=1)
+
+    if ensure_shape_match:
+        band = np.zeros([
+            window,
+            np.size(rolled_array,1),
+            np.size(rolled_array,2)
+        ])
+        return np.concatenate([band, rolled_array, band], axis=0)
+
+    return rolled_array
+
+
+def rolling_average_1d(data, window_size):
+    """ Compute the rolling average of a 1D array.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        Input 1D array.
+    window_size : int
+        Size of the rolling window. Must be at least 1.
+
+    Returns
+    -------
+    result : np.ndarray
+        1D array with the rolling average applied.
+    """
+
+
+    if window_size < 1:
+        raise ValueError("Window size must be at least 1")
+
+    data = np.asarray(data)
+    result = np.empty_like(data, dtype=float)
+
+    half_w = window_size // 2
+
+    for i in range(len(data)):
+        start = max(0, i - half_w)
+        end = min(len(data), i + half_w + 1)
+        result[i] = np.mean(data[start:end])
+
+    return result
+

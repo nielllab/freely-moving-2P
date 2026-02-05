@@ -269,6 +269,6 @@ def review_STAs():
 
 if __name__ == '__main__':
 
-    review_STAs
+    review_STAs()
 
     
