@@ -11,7 +11,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 import matplotlib.cm as cm
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = 'cuda' # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class BaseModel(nn.Module):
     def __init__(self, 
@@ -296,10 +296,6 @@ def load_position_data(h5_path, modeltype='full', lags=None, use_abs=False, devi
     if use_abs:
         X = np.abs(X)
 
-    # Smooth inputs to reduce jitter in predictions
-    # for i in range(X.shape[1]):
-    #     X[:, i] = fm2p.convfilt(X[:, i], box_pts=10)
-
     if lags is not None:
         X = add_temporal_lags(X, lags)
     
@@ -317,7 +313,6 @@ def load_position_data(h5_path, modeltype='full', lags=None, use_abs=False, devi
     Y_tensor = torch.tensor(spikes, dtype=torch.float32).to(device)
     
     return X_tensor, Y_tensor, feature_names
-
 
 
 def setup_model_training(model,params,network_config):
@@ -437,7 +432,6 @@ def compute_permutation_importance(model, X_test, Y_test, feature_names, lags, d
     
     model.eval()
     
-    # Move to CPU for shuffling
     X_np = X_test.cpu().numpy()
     Y_np = Y_test.cpu().numpy()
     
@@ -445,11 +439,9 @@ def compute_permutation_importance(model, X_test, Y_test, feature_names, lags, d
     n_lags = len(lags) if lags is not None else 1
     n_base_features = n_inputs // n_lags
     
-    # Baseline performance
     with torch.no_grad():
         y_hat = model(X_test).cpu().numpy()
     
-    # Calculate baseline R2 per cell
     baseline_r2 = np.zeros(Y_np.shape[1])
     for c in range(Y_np.shape[1]):
         ss_res = np.sum((Y_np[:, c] - y_hat[:, c]) ** 2)
@@ -461,7 +453,6 @@ def compute_permutation_importance(model, X_test, Y_test, feature_names, lags, d
     for i, feat_name in enumerate(feature_names):
         X_shuff = X_np.copy()
         
-        # Shuffle this feature across all lags
         for l in range(n_lags):
             col_idx = i + (l * n_base_features)
             np.random.shuffle(X_shuff[:, col_idx])
@@ -477,28 +468,15 @@ def compute_permutation_importance(model, X_test, Y_test, feature_names, lags, d
             ss_tot = np.sum((Y_np[:, c] - np.mean(Y_np[:, c])) ** 2)
             shuff_r2[c] = 1 - (ss_res / (ss_tot + 1e-8))
             
-        # Importance is drop in R2
         importances[feat_name] = baseline_r2 - shuff_r2
         
     return importances
 
 
 def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None, show=True):
-    """
-    Plot feature importance.
-    
-    Args:
-        data (dict): Dictionary containing importance scores. 
-                     Can be the raw 'importances' dict (feature -> scores) 
-                     or the full 'dict_out' (model_key_importance_feature -> scores).
-        model_key (str, optional): If data is dict_out, this specifies which model to plot (e.g. 'full_abs').
-                                   If None, assumes data is the raw importances dict.
-        cell_idx (int, optional): Index of the cell to plot. If None, plots distribution across all cells.
-        save_path (str, optional): Path to save the figure.
-    """
-    
+
     if model_key is not None:
-        # Extract importances from dict_out using model_key
+
         importances = {}
         prefix = f'{model_key}_importance_'
         for k, v in data.items():
@@ -533,12 +511,12 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
             sorted_indices = np.arange(n_cells)
             
         with PdfPages(save_path) as pdf:
-            # Population Summary
+
             plt.figure(figsize=(8, 5), dpi=300)
             ax = plt.gca()
             for i, feat in enumerate(feature_names):
                 vals = np.asarray(importances[feat]).flatten()
-                fm2p.add_scatter_col(ax, i, vals, color=colors[i])
+                fm2p.add_scatter_col(ax, i, vals)#, color=colors[i])
             
             plt.ylabel('Importance (Drop in R²)', fontsize=12)
             plt.title(f'Feature Importance Population Summary ({model_key})', fontsize=14)
@@ -548,7 +526,6 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
             pdf.savefig()
             plt.close()
             
-            # Individual Cells
             for i, c_idx in enumerate(sorted_indices):
                 plot_feature_importance(importances, cell_idx=c_idx, save_path=None, show=False)
                 plt.suptitle(f'Cell {c_idx} (Rank {i+1}) - Corr: {corrs[c_idx]:.3f}')
@@ -557,8 +534,7 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
         return
 
     if cell_idx is not None:
-        # Plot for a single cell
-        # Check if cell_idx is valid
+
         n_cells = len(next(iter(importances.values())))
         if cell_idx >= n_cells:
             print(f"Cell index {cell_idx} out of bounds (n_cells={n_cells})")
@@ -574,7 +550,6 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
         plt.axhline(0, color='black', linewidth=0.8)
         plt.grid(False)
         
-        # Add values on top of bars
         for bar in bars:
             height = bar.get_height()
             plt.text(bar.get_x() + bar.get_width()/2., height,
@@ -584,7 +559,7 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
         plt.tight_layout()
         
     else:
-        # Plot population summary (box plot)
+
         plt.figure(figsize=(8, 5), dpi=300)
         ax = plt.gca()
         for i, feat in enumerate(feature_names):
@@ -605,22 +580,15 @@ def plot_feature_importance(data, model_key=None, cell_idx=None, save_path=None,
 
 
 def plot_shuffled_comparison(model, X_test, Y_test, feature_names, lags, feature_to_shuffle, cell_idx, save_path=None, device=device, pdf=None):
-    """
-    Plots the model's prediction against the true spikes, and overlays the prediction
-    when a specific feature is shuffled. This helps diagnose why a feature might have
-    negative importance (i.e., why the model performs better without it).
-    """
+
     model.eval()
     
-    # Move to CPU for plotting/numpy ops
     X_np = X_test.cpu().numpy()
     Y_np = Y_test.cpu().numpy()
     
-    # 1. Get Baseline Prediction
     with torch.no_grad():
         y_hat = model(X_test).cpu().numpy()
         
-    # 2. Get Shuffled Prediction
     n_lags = len(lags) if lags is not None else 1
     n_inputs = X_np.shape[1]
     n_base_features = n_inputs // n_lags
@@ -632,7 +600,6 @@ def plot_shuffled_comparison(model, X_test, Y_test, feature_names, lags, feature
     feat_idx = feature_names.index(feature_to_shuffle)
     X_shuff = X_np.copy()
     
-    # Shuffle the specific feature across all time lags
     for l in range(n_lags):
         col_idx = feat_idx + (l * n_base_features)
         np.random.shuffle(X_shuff[:, col_idx])
@@ -642,7 +609,6 @@ def plot_shuffled_comparison(model, X_test, Y_test, feature_names, lags, feature
     with torch.no_grad():
         y_hat_shuff = model(X_shuff_tensor).cpu().numpy()
         
-    # 3. Plot
     plt.figure(figsize=(12, 6))
     plot_len = min(1000, Y_np.shape[0])
     t = np.arange(plot_len)
@@ -672,18 +638,29 @@ def save_shuffled_comparison_pdf(model, X_test, Y_test, feature_names, lags, imp
     sorted_indices = np.argsort(corrs)[::-1]
     
     with PdfPages(save_path) as pdf:
+
         for i, cell_idx in enumerate(sorted_indices):
-            # Find features with negative importance
+
             neg_feats = []
             for feat, imp in importances.items():
                 if imp[cell_idx] < -0.05:
                     neg_feats.append((feat, imp[cell_idx]))
             
-            # Sort by importance (most negative first)
             neg_feats.sort(key=lambda x: x[1])
             
             for feat, imp in neg_feats:
-                plot_shuffled_comparison(model, X_test, Y_test, feature_names, lags, feat, cell_idx, save_path=None, device=device, pdf=pdf)
+                plot_shuffled_comparison(
+                    model,
+                    X_test,
+                    Y_test,
+                    feature_names,
+                    lags,
+                    feat,
+                    cell_idx,
+                    save_path=None,
+                    device=device,
+                    pdf=pdf
+                )
 
 
 def save_model_predictions_pdf(dict_out, save_path):
@@ -709,7 +686,6 @@ def save_model_predictions_pdf(dict_out, save_path):
             y_true = dict_out['full_y_true'][:, cell_idx]
             t = np.arange(len(y_true))
             
-            # Page 1: Normal
             fig = plt.figure(figsize=(12, 8), dpi=300)
             gs = fig.add_gridspec(3, 4)
             ax_main = fig.add_subplot(gs[0, :])
@@ -738,7 +714,6 @@ def save_model_predictions_pdf(dict_out, save_path):
             pdf.savefig(fig)
             plt.close(fig)
             
-            # Page 2: Abs
             fig = plt.figure(figsize=(12, 8), dpi=300)
             gs = fig.add_gridspec(3, 4)
             ax_main = fig.add_subplot(gs[0, :])
@@ -786,7 +761,7 @@ if __name__ == '__main__':
         'L1_alpha': 1e-2,
         'Nepochs': args['Nepochs'],
         'L2_lambda': 1e-3,
-        'lags': np.arange(-10,1,1), # Use past behavior (-N to 0) to predict current neural activity
+        'lags': np.arange(-10,1,1),
         'use_abs': False,
         'hidden_size': 128,
         'dropout': 0.25
@@ -845,13 +820,10 @@ if __name__ == '__main__':
         'model_weights': model.get_weights()
     }
 
-    # Define all model configurations to run
     model_runs = []
     
-    # Full model with abs
     model_runs.append({'key': 'full_abs', 'type': 'full', 'abs': True})
 
-    # Individual variables
     variables = [
         'theta',
         'phi',
@@ -880,7 +852,6 @@ if __name__ == '__main__':
 
         print(f'Fitting model: {key} (type={mtype}, abs={use_abs})')
 
-        # Update config for this run
         current_config = pos_config.copy()
         current_config['use_abs'] = use_abs
 
@@ -891,7 +862,6 @@ if __name__ == '__main__':
         with torch.no_grad():
             y_hat = model(X_test)
         
-        # Move to CPU for numpy operations
         y_true = y_test.cpu().numpy()
         y_pred = y_hat.cpu().numpy()
         
@@ -917,14 +887,11 @@ if __name__ == '__main__':
         for feat, imp in importances.items():
             dict_out[f'{key}_importance_{feat}'] = imp
             
-        # Visualize for the best cell (highest R2)
         best_cell_idx = np.argmax(r2_scores)
         
-        # Save feature importance PDF
         fi_pdf_path = os.path.join(base_path, f'{key}_feature_importance.pdf')
         plot_feature_importance(dict_out, model_key=key, save_path=fi_pdf_path)
         
-        # Save shuffled comparison PDF
         sc_pdf_path = os.path.join(base_path, f'{key}_shuffled_comparison.pdf')
         save_shuffled_comparison_pdf(model, X_test, y_test, feature_names, current_config.get('lags'), importances, corrs, sc_pdf_path, device=device)
 
