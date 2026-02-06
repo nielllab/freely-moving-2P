@@ -6,9 +6,11 @@ import torch.optim as optim
 from pathlib import Path
 import argparse
 import matplotlib.pyplot as plt
+import os
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = 'cuda'
 
 
 class BaseModel(nn.Module):
@@ -37,6 +39,7 @@ class BaseModel(nn.Module):
         if self.hidden_size > 0:
             layers = [
                 nn.Linear(self.in_features, self.hidden_size),
+                nn.BatchNorm1d(self.hidden_size), # Batch Norm helps with training stability and peaks
                 nn.ReLU()
             ]
             if self.dropout_p > 0:
@@ -46,8 +49,8 @@ class BaseModel(nn.Module):
         else:
             self.Cell_NN = nn.Sequential(nn.Linear(self.in_features, self.N_cells,bias=True))
 
-        # Beta=5 makes Softplus sharper (closer to ReLU), helping predict 0 and rapid peaks
-        self.activations = nn.ModuleDict({'SoftPlus':nn.Softplus(beta=5),
+        # Beta=20 makes Softplus sharper (closer to ReLU), helping predict 0 and rapid peaks
+        self.activations = nn.ModuleDict({'SoftPlus':nn.Softplus(beta=0.5), # just was 5
                                           'ReLU': nn.ReLU(),})
         
         # Initialize weights for all linear layers
@@ -61,6 +64,10 @@ class BaseModel(nn.Module):
             for m in self.Cell_NN.modules():
                 if isinstance(m, nn.Linear):
                     torch.nn.init.normal_(m.weight, std=1/m.in_features)
+        
+        # Force last layer bias to be negative to start with low firing rates (helps with predicting 0)
+        if isinstance(self.Cell_NN, nn.Sequential):
+            self.Cell_NN[-1].bias.data.fill_(-2.5) # just was -2.0
 
         # Initialize Regularization parameters
         self.L1_alpha = config['L1_alpha']
@@ -603,7 +610,8 @@ def setup_model_training(model,params,network_config):
         optimizer = optim.Adam(params=param_list)
     else:
         optimizer = optim.SGD(params=param_list)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=int(params['Nepochs']/5))
+    # Use ReduceLROnPlateau to dynamically lower LR when loss stops improving
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=50)
     return optimizer, scheduler
 
 
@@ -652,7 +660,10 @@ def train_position_model(h5_path, config, save_path=None, device=device):
         optimizer.step()
         
         if scheduler:
-            scheduler.step()
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(loss.sum())
+            else:
+                scheduler.step()
             
         if epoch % 100 == 0:
             print(f"Epoch {epoch}/{params['Nepochs']}, Loss: {loss.sum().item():.4f}")
@@ -690,7 +701,9 @@ if __name__ == '__main__':
     params = load_params(args, ModelID=1)
 
     # Direct path to the preprocessed HDF5 file
-    h5_path = Path('/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251016_DMM_DMM061_pos18/fm1/251016_DMM_DMM061_fm_01_preproc.h5')
+    # h5_path = Path('/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251016_DMM_DMM061_pos18/fm1/251016_DMM_DMM061_fm_01_preproc.h5')
+    base_path = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251021_DMM_DMM061_pos04/fm1'
+    h5_path = Path(os.path.join(base_path, '251021_DMM_DMM061_fm_01_preproc.h5'))
 
     # Create config dict for PositionGLM
     # Using appropriate values from params.py
@@ -701,7 +714,7 @@ if __name__ == '__main__':
         'optimizer': params['optimizer'],
         'lr_w': 1e-2, # was 1e-3
         'lr_b': 1e-2, # was 1e-3
-        'L1_alpha': 1e-4, # Regularization for position terms
+        'L1_alpha': 1e-4, # Regularization for position terms  just was 1e-4
         'Nepochs': params['Nepochs'],
         'L2_lambda': 1e-4, # Not sure if this is best
         'lags': np.arange(-20,21,1), # Reduced lags slightly to focus on immediate events
@@ -751,3 +764,11 @@ if __name__ == '__main__':
     plt.ylabel('Count')
     plt.title('Distribution of R^2 Scores')
     plt.show()
+
+    dict_out = {
+        'y_hat': y_pred,
+        'y_true': y_true,
+        'r2_scores': r2_scores
+    }
+
+    fm2p.write_h5(os.path.join(base_path, 'pytorchGLM_predictions.h5'), dict_out)
