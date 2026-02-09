@@ -169,7 +169,7 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
         dPhi = np.roll(dPhi, -2)
         data['dPhi'] = dPhi
 
-    if 'dTheta' not in data.keys() and 'dEye' not in data.keys():
+    if 'dTheta' not in data.keys():# and 'dEye' not in data.keys():
         theta_full = np.rad2deg(data['theta'][data['eyeT_startInd']:data['eyeT_endInd']])
         dTheta  = np.diff(fm2p.interp_short_gaps(theta_full, 5)) / np.diff(eyeT)
         dTheta = np.roll(dTheta, -2)
@@ -179,12 +179,14 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
         t1 = t + (np.diff(eyeT) / 2)
         data['eyeT1'] = t1
 
-    elif 'dTheta' not in data.keys():
-        data['dTheta'] = data['dEye'].copy()
+    # elif 'dTheta' not in data.keys():
+    #     data['dTheta'] = data['dEye'].copy()
 
     dTheta = fm2p.interp_short_gaps(data['dTheta'])
+    # print(phi_full.shape, theta_full.shape, dTheta.shape)
     dTheta = fm2p.interpT(dTheta, data['eyeT1'], data['twopT'])
     dPhi = fm2p.interp_short_gaps(data['dPhi'])
+    # print(dPhi.shape, data['eyeT1'].shape, data['twopT'].shape, eyeT.shape, dTheta.shape)
     dPhi = fm2p.interpT(dPhi, data['eyeT1'], data['twopT'])
 
     ltdk = data['ltdk_state_vec'].copy()
@@ -1034,6 +1036,8 @@ def pytorchGLM():
         cohort_dir
     )
     print('Found {} recordings.'.format(len(recordings)))
+
+    recordings = recordings[27:]
 
     for ri, rec in enumerate(recordings):
 
