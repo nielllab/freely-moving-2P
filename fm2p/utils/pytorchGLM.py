@@ -151,14 +151,14 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
     theta = data.get('theta_interp')
     phi = data.get('phi_interp')
 
-    yaw = data['head_yaw_deg']
+    yaw = data.get('head_yaw_deg')
 
-    roll = data.get('roll_twop_interp', np.zeros_like(theta))
-    pitch = data.get('pitch_twop_interp', np.zeros_like(theta))
+    roll = data.get('roll_twop_interp')
+    pitch = data.get('pitch_twop_interp')
 
-    gyro_x = data['gyro_x_twop_interp']
-    gyro_y = data['gyro_y_twop_interp']
-    gyro_z = data['gyro_z_twop_interp']
+    gyro_x = data.get('gyro_x_twop_interp')
+    gyro_y = data.get('gyro_y_twop_interp')
+    gyro_z = data.get('gyro_z_twop_interp')
 
     eyeT = data['eyeT'][data['eyeT_startInd']:data['eyeT_endInd']]
     eyeT = eyeT - eyeT[0]
@@ -191,33 +191,11 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
 
     ltdk = data['ltdk_state_vec'].copy()
     
-    min_len = min(
-        len(theta),
-        len(phi),
-        len(yaw),
-        len(roll),
-        len(pitch),
-        len(ltdk),
-        len(dTheta),
-        len(dPhi),
-        len(gyro_x),
-        len(gyro_y),
-        len(gyro_z)
-    )
-
-    # print(
-    #     len(theta),
-    #     len(phi),
-    #     len(yaw),
-    #     len(roll),
-    #     len(pitch),
-    #     len(ltdk),
-    #     len(dTheta),
-    #     len(dPhi),
-    #     len(gyro_x),
-    #     len(gyro_y),
-    #     len(gyro_z)
-    # )
+    valid_arrays = [x for x in [theta, phi, yaw, roll, pitch, ltdk, dTheta, dPhi, gyro_x, gyro_y, gyro_z] if x is not None]
+    if not valid_arrays:
+        raise ValueError("No valid data arrays found.")
+    
+    min_len = min(len(x) for x in valid_arrays)
     
     spikes = data.get('norm_dFF')
     if spikes is None:
@@ -228,23 +206,36 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
         
     min_len = min(min_len, spikes.shape[1])
     
-    theta = theta[:min_len]
-    phi = phi[:min_len]
-    yaw = yaw[:min_len]
-    roll = roll[:min_len]
-    pitch = pitch[:min_len]
+    if theta is not None: theta = theta[:min_len]
+    if phi is not None: phi = phi[:min_len]
+    if yaw is not None: yaw = yaw[:min_len]
+    if roll is not None: roll = roll[:min_len]
+    if pitch is not None: pitch = pitch[:min_len]
     spikes = spikes[:, :min_len]
     spikes = spikes.T
     ltdk = ltdk[:min_len]
-    dTheta = dTheta[:min_len]
-    dPhi = dPhi[:min_len]
-    gyro_x = gyro_x[:min_len]
-    gyro_y = gyro_y[:min_len]
-    gyro_z = gyro_z[:min_len]
+    if dTheta is not None: dTheta = dTheta[:min_len]
+    if dPhi is not None: dPhi = dPhi[:min_len]
+    if gyro_x is not None: gyro_x = gyro_x[:min_len]
+    if gyro_y is not None: gyro_y = gyro_y[:min_len]
+    if gyro_z is not None: gyro_z = gyro_z[:min_len]
     
     if modeltype == 'full':
-        X = np.stack([theta, phi, yaw, roll, pitch, dTheta, dPhi, gyro_x, gyro_y, gyro_z], axis=1)
-        feature_names = ['theta', 'phi', 'yaw', 'roll', 'pitch', 'dTheta', 'dPhi', 'gyro_x', 'gyro_y', 'gyro_z']
+        features = []
+        names = []
+        if theta is not None: features.append(theta); names.append('theta')
+        if phi is not None: features.append(phi); names.append('phi')
+        if yaw is not None: features.append(yaw); names.append('yaw')
+        if roll is not None: features.append(roll); names.append('roll')
+        if pitch is not None: features.append(pitch); names.append('pitch')
+        if dTheta is not None: features.append(dTheta); names.append('dTheta')
+        if dPhi is not None: features.append(dPhi); names.append('dPhi')
+        if gyro_x is not None: features.append(gyro_x); names.append('gyro_x')
+        if gyro_y is not None: features.append(gyro_y); names.append('gyro_y')
+        if gyro_z is not None: features.append(gyro_z); names.append('gyro_z')
+        
+        X = np.stack(features, axis=1)
+        feature_names = names
     elif modeltype == 'theta':
         X = np.stack([theta, dTheta], axis=1)
         feature_names = ['theta', 'dTheta']
@@ -950,13 +941,17 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
     
     # model_runs.append({'key': 'full_abs', 'type': 'full', 'abs': True})
 
-    variables = [
-        'theta',
-        'phi',
-        'yaw',
-        'roll',
-        'pitch'
-    ]
+    has_yaw = 'head_yaw_deg' in data
+    has_roll = 'roll_twop_interp' in data
+    has_pitch = 'pitch_twop_interp' in data
+    has_gyro_x = 'gyro_x_twop_interp' in data
+    has_gyro_y = 'gyro_y_twop_interp' in data
+    has_gyro_z = 'gyro_z_twop_interp' in data
+
+    variables = ['theta', 'phi']
+    if has_yaw: variables.append('yaw')
+    if has_roll: variables.append('roll')
+    if has_pitch: variables.append('pitch')
     
     for var in variables:
         # Combined (pos + vel)
@@ -968,7 +963,13 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
         # model_runs.append({'key': f'{var}_pos_abs', 'type': f'{var}_pos', 'abs': True})
         
         # Velocity only
-        model_runs.append({'key': f'{var}_vel', 'type': f'{var}_vel', 'abs': False})
+        add_vel = True
+        if var == 'yaw' and not has_gyro_z: add_vel = False
+        if var == 'roll' and not has_gyro_x: add_vel = False
+        if var == 'pitch' and not has_gyro_y: add_vel = False
+        
+        if add_vel:
+            model_runs.append({'key': f'{var}_vel', 'type': f'{var}_vel', 'abs': False})
         # model_runs.append({'key': f'{var}_vel_abs', 'type': f'{var}_vel', 'abs': True})
 
     for run in model_runs:
@@ -1030,14 +1031,15 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
 
 def pytorchGLM():
 
-    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
+    # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
+    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings/'
     recordings = fm2p.find(
         '*fm*_preproc.h5',
         cohort_dir
     )
     print('Found {} recordings.'.format(len(recordings)))
 
-    recordings = recordings[27:]
+    recordings = recordings[7:]
 
     for ri, rec in enumerate(recordings):
 
@@ -1049,4 +1051,3 @@ def pytorchGLM():
 if __name__ == '__main__':
 
     pytorchGLM()
-

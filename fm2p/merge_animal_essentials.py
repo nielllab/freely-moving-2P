@@ -12,33 +12,85 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
+from tqdm import tqdm
 
 import fm2p
 
 
+
+
+def make_pooled_dataset():
+
+    uniref = fm2p.read_h5('/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/DMM056/animal_reference_260115_10h-06m-52s.h5')
+
+    pooled = {
+        'uniref': uniref
+    }
+
+    animal_dirs = ['DMM037', 'DMM041', 'DMM042', 'DMM056', 'DMM061']
+    main_basepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites'
+
+    keys = ['theta','phi','dTheta','dPhi','pitch','yaw','roll','dPitch','dYaw','dRoll']
+    conds = ['l', 'd']
+
+    for key in keys:
+        pooled[key] = {}
+        for cond in conds:
+            pooled[key][cond] = {}
+            for animal_dir in animal_dirs:
+                pooled[key][cond][animal_dir] = {}
+
+    for key in keys:
+        for cond in conds:
+            for animal_dir in animal_dirs:
+
+                basepath = os.path.join(main_basepath, animal_dir)
+
+                if animal_dir == 'DMM056':
+                    # this is actually local to global, not global to universal
+                    transform_g2u = fm2p.read_h5(fm2p.find('*aligned_composite_local_to_global_transform.h5', basepath, MR=True))
+                else:
+                    transform_g2u = fm2p.read_h5(fm2p.find('aligned_composite_*.h5', basepath, MR=True))
+                
+                messentials = fm2p.read_h5(fm2p.find('*_merged_essentials_v8.h5', basepath, MR=True))
+
+                pooled[key][cond][animal_dir]['messentials'] = messentials
+                pooled[key][cond][animal_dir]['transform'] = transform_g2u
+
+    savepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/pooled_260208.h5'
+    print('Writing {}'.format(savepath))
+    fm2p.write_h5(savepath, pooled)
+
+
+
 def merge_animal_essentials():
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-animal', '--animal', type=str)
-    parser.add_argument('-codir', '--codir', type=str)
-    parser.add_argument('-mapdir', '--mapdir', type=str)
-    args = parser.parse_args()
+    animalID = 'DMM037'
+    # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
+    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings/'
+    map_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/{}/'.format(animalID)
 
-    if args.codir is None:
-        cohort_dir = fm2p.select_directory(
-            'Select cohort directory.'
-        )
-    else:
-        cohort_dir = args.codir
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('-animal', '--animal', type=str)
+    # parser.add_argument('-codir', '--codir', type=str)
+    # parser.add_argument('-mapdir', '--mapdir', type=str)
+    # args = parser.parse_args()
+
+    # if args.codir is None:
+    #     cohort_dir = fm2p.select_directory(
+    #         'Select cohort directory.'
+    #     )
+    # else:
+    #     cohort_dir = args.codir
     
-    if args.mapdir is None:
-        map_dir = fm2p.select_directory(
-            'Select sign map and composite directory.'
-        )
-    else:
-        map_dir = args.mapdir
+    # if args.mapdir is None:
+    #     map_dir = fm2p.select_directory(
+    #         'Select sign map and composite directory.'
+    #     )
+    # else:
+    #     map_dir = args.mapdir
 
-    animalID = args.animal
+    # animalID = args.animal
 
     animal_dict = {}
 
@@ -53,12 +105,17 @@ def merge_animal_essentials():
         # for light vs dark conditions
         r = fm2p.find('eyehead_revcorrs_v4cent.h5', os.path.split(p)[0], MR=True)
         sn = os.path.join(os.path.split(os.path.split(p)[0])[0], 'sn1/sparse_noise_labels_gaussfit.npz')
+        try:
+            modeldata = fm2p.find('pytorchGLM_predictions_v04_imurepair.h5', os.path.split(p)[0], MR=True)
+        except:
+            modeldata = 'none'
 
         animal_dict[pos_key] = {
             'preproc': p,
             'revcorr': r,
             'sparsenoise': sn,
-            'name': main_key
+            'name': main_key,
+            'model': modeldata
         }
 
 
@@ -68,11 +125,12 @@ def merge_animal_essentials():
     all_rdata = []
     all_pos = []
     all_cell_positions = []
+    all_model_data = []
     full_map = np.zeros([512*5, 512*5]) * np.nan
 
     row = 0
     col = 0
-    for pos in range(1,26):
+    for pos in tqdm(range(1,26)):
         pos_str = 'pos{:02d}'.format(pos)
 
         if pos_str not in list(animal_dict.keys()):
@@ -85,6 +143,11 @@ def merge_animal_essentials():
 
         pdata = fm2p.read_h5(animal_dict[pos_str]['preproc'])
         rdata = fm2p.read_h5(animal_dict[pos_str]['revcorr'])
+        if modeldata != 'none':
+            modeldata = fm2p.read_h5(animal_dict[pos_str]['model'])
+        else:
+            modeldata = {}
+
         if os.path.isfile(animal_dict[pos_str]['sparsenoise']):
             sndata = np.load(animal_dict[pos_str]['sparsenoise'])
             snarr = np.concatenate([sndata['true_indices'][:,np.newaxis], sndata['pos_centroids']], axis=1)
@@ -94,6 +157,7 @@ def merge_animal_essentials():
         all_pdata.append(pdata)
         all_rdata.append(rdata)
         all_pos.append((row, col))
+        all_model_data.append(modeldata)
 
         singlemap = pdata['twop_ref_img']
 
@@ -112,7 +176,8 @@ def merge_animal_essentials():
             'rdata': rdata,
             'tile_pos': np.array([row,col]),
             'cell_pos': cell_positions,
-            'sn_cents': snarr
+            'sn_cents': snarr,
+            'model': modeldata
         }
 
         all_cell_positions.append(cell_positions)
@@ -143,8 +208,10 @@ def merge_animal_essentials():
     full_dict['ref_img'] = resized_fullimg
 
     # save as v5 (jan 17)
-    savepath = os.path.join(map_dir, '{}_merged_essentials_v7cent.h5'.format(animalID))
+    savepath = os.path.join(map_dir, '{}_merged_essentials_v8.h5'.format(animalID))
     fm2p.write_h5(savepath, full_dict)
+
+    print('Wrote {}'.format(savepath))
 
 
 def plot_running_median(ax, x, y, n_bins=7, vertical=False):
@@ -231,7 +298,6 @@ def visualize_topographic_map(messentials, composite, key, cond):
     plot_running_median(ax_histx, h_hist_data[:,0], h_hist_data[:,1], 9)
     plot_running_median(ax_histy, v_hist_data[:,0], v_hist_data[:,1], 9, vertical=True)
 
-    # ax.invert_yaxis()
     fig.suptitle('{} ({})'.format(key, cond))
 
     fig.tight_layout()
@@ -241,5 +307,7 @@ def visualize_topographic_map(messentials, composite, key, cond):
 
 if __name__ == '__main__':
 
-    merge_animal_essentials()
+    # merge_animal_essentials()
+
+    make_pooled_dataset()
 
