@@ -45,7 +45,8 @@ class BaseModel(nn.Module):
 
         self.activations = nn.ModuleDict({'SoftPlus':nn.Softplus(beta=0.5),
                                           'ReLU': nn.ReLU(),
-                                          'Identity': nn.Identity()})
+                                          'Identity': nn.Identity(),
+                                          'Sigmoid': nn.Sigmoid()})
         
         if self.config['initW'] == 'zero':
             for m in self.Cell_NN.modules():
@@ -197,6 +198,7 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
     
     min_len = min(len(x) for x in valid_arrays)
     
+    # spikes = data.get('norm_spikes')
     spikes = data.get('norm_dFF')
     if spikes is None:
         raise ValueError("norm_spikes not found in HDF5 file.")
@@ -281,6 +283,46 @@ def load_position_data(data_input, modeltype='full', lags=None, use_abs=False, d
     elif modeltype == 'pitch_vel':
         X = gyro_y[:, np.newaxis]
         feature_names = ['gyro_y']
+    elif modeltype == 'velocity_only':
+        features = []
+        names = []
+        if dTheta is not None: features.append(dTheta); names.append('dTheta')
+        if dPhi is not None: features.append(dPhi); names.append('dPhi')
+        if gyro_x is not None: features.append(gyro_x); names.append('gyro_x')
+        if gyro_y is not None: features.append(gyro_y); names.append('gyro_y')
+        if gyro_z is not None: features.append(gyro_z); names.append('gyro_z')
+        X = np.stack(features, axis=1)
+        feature_names = names
+    elif modeltype == 'position_only':
+        features = []
+        names = []
+        if theta is not None: features.append(theta); names.append('theta')
+        if phi is not None: features.append(phi); names.append('phi')
+        if yaw is not None: features.append(yaw); names.append('yaw')
+        if roll is not None: features.append(roll); names.append('roll')
+        if pitch is not None: features.append(pitch); names.append('pitch')
+        X = np.stack(features, axis=1)
+        feature_names = names
+    elif modeltype == 'eyes_only':
+        features = []
+        names = []
+        if theta is not None: features.append(theta); names.append('theta')
+        if phi is not None: features.append(phi); names.append('phi')
+        if dTheta is not None: features.append(dTheta); names.append('dTheta')
+        if dPhi is not None: features.append(dPhi); names.append('dPhi')
+        X = np.stack(features, axis=1)
+        feature_names = names
+    elif modeltype == 'head_only':
+        features = []
+        names = []
+        if yaw is not None: features.append(yaw); names.append('yaw')
+        if roll is not None: features.append(roll); names.append('roll')
+        if pitch is not None: features.append(pitch); names.append('pitch')
+        if gyro_x is not None: features.append(gyro_x); names.append('gyro_x')
+        if gyro_y is not None: features.append(gyro_y); names.append('gyro_y')
+        if gyro_z is not None: features.append(gyro_z); names.append('gyro_z')
+        X = np.stack(features, axis=1)
+        feature_names = names
     else:
         raise ValueError(f"Invalid modeltype: {modeltype}")
     
@@ -343,7 +385,7 @@ def setup_model_training(model,params,network_config):
     return optimizer, scheduler
 
 
-def train_position_model(data_input, config, modeltype='full', save_path=None, device=device):
+def train_position_model(data_input, config, modeltype='full', save_path=None, load_path=None, device=device):
 
     lags = config.get('lags', None)
     use_abs = config.get('use_abs', False)
@@ -376,36 +418,40 @@ def train_position_model(data_input, config, modeltype='full', save_path=None, d
     model = PositionGLM(config['in_features'], config['Ncells'], config, device=device)
     model.to(device)
     
-    params = {'ModelID': 0, 'Nepochs': config.get('Nepochs', 1000), 'train_shifter': False}
-    optimizer, scheduler = setup_model_training(model, params, config)
-    
-    model.train()
-    # print("Starting training...")
-    for epoch in range(params['Nepochs']):
-        optimizer.zero_grad()
+    if load_path and os.path.exists(load_path):
+        print(f"Loading model from {load_path}")
+        model.load_state_dict(torch.load(load_path))
+    else:
+        params = {'ModelID': 0, 'Nepochs': config.get('Nepochs', 1000), 'train_shifter': False}
+        optimizer, scheduler = setup_model_training(model, params, config)
+        
+        model.train()
+        # print("Starting training...")
+        for epoch in range(params['Nepochs']):
+            optimizer.zero_grad()
 
-        outputs = model(X_train)
-        
-        loss = model.loss(outputs, Y_train)
-
-        loss.sum().backward()
-        optimizer.step()
-        
-        if scheduler:
-            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                scheduler.step(loss.sum())
-            else:
-                scheduler.step()
-        
-        # if epoch % 100 == 0:
-            # print(f"\rEpoch {epoch}/{params['Nepochs']}, Loss: {loss.sum().item():.4f}", end='', flush=True)
-    # print('\n')
+            outputs = model(X_train)
             
-    # print("Training complete.")
-    
-    if save_path:
-        torch.save(model.state_dict(), save_path)
-        # print(f"Model saved to {save_path}")
+            loss = model.loss(outputs, Y_train)
+
+            loss.sum().backward()
+            optimizer.step()
+            
+            if scheduler:
+                if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    scheduler.step(loss.sum())
+                else:
+                    scheduler.step()
+            
+            # if epoch % 100 == 0:
+                # print(f"\rEpoch {epoch}/{params['Nepochs']}, Loss: {loss.sum().item():.4f}", end='', flush=True)
+        # print('\n')
+                
+        # print("Training complete.")
+        
+        if save_path:
+            torch.save(model.state_dict(), save_path)
+            # print(f"Model saved to {save_path}")
         
     return model, X_test, Y_test, feature_names
 
@@ -866,14 +912,15 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
         'L1_alpha': 1e-2,
         'Nepochs': 5000,
         'L2_lambda': 1e-3,
-        'lags': np.arange(-10,1,1),
+        'lags': np.arange(-4,1,1), # was -10 (1.33 sec)
         'use_abs': False,
         'hidden_size': 128,
         'dropout': 0.25
     }
 
     print(f"Fitting full model")
-    model, X_test, y_test, feature_names = train_position_model(data, pos_config)
+    full_model_path = os.path.join(base_path, 'full_model.pth')
+    model, X_test, y_test, feature_names = train_position_model(data, pos_config, save_path=full_model_path, load_path=full_model_path)
 
     loss = test_position_model(model, X_test, y_test)
 
@@ -939,38 +986,10 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
     # )
     model_runs = []
     
-    # model_runs.append({'key': 'full_abs', 'type': 'full', 'abs': True})
-
-    has_yaw = 'head_yaw_deg' in data
-    has_roll = 'roll_twop_interp' in data
-    has_pitch = 'pitch_twop_interp' in data
-    has_gyro_x = 'gyro_x_twop_interp' in data
-    has_gyro_y = 'gyro_y_twop_interp' in data
-    has_gyro_z = 'gyro_z_twop_interp' in data
-
-    variables = ['theta', 'phi']
-    if has_yaw: variables.append('yaw')
-    if has_roll: variables.append('roll')
-    if has_pitch: variables.append('pitch')
-    
-    for var in variables:
-        # Combined (pos + vel)
-        # model_runs.append({'key': var, 'type': var, 'abs': False})
-        # model_runs.append({'key': f'{var}_abs', 'type': var, 'abs': True})
-        
-        # Position only
-        model_runs.append({'key': f'{var}_pos', 'type': f'{var}_pos', 'abs': False})
-        # model_runs.append({'key': f'{var}_pos_abs', 'type': f'{var}_pos', 'abs': True})
-        
-        # Velocity only
-        add_vel = True
-        if var == 'yaw' and not has_gyro_z: add_vel = False
-        if var == 'roll' and not has_gyro_x: add_vel = False
-        if var == 'pitch' and not has_gyro_y: add_vel = False
-        
-        if add_vel:
-            model_runs.append({'key': f'{var}_vel', 'type': f'{var}_vel', 'abs': False})
-        # model_runs.append({'key': f'{var}_vel_abs', 'type': f'{var}_vel', 'abs': True})
+    model_runs.append({'key': 'velocity_only', 'type': 'velocity_only', 'abs': False})
+    model_runs.append({'key': 'position_only', 'type': 'position_only', 'abs': False})
+    model_runs.append({'key': 'eyes_only', 'type': 'eyes_only', 'abs': False})
+    model_runs.append({'key': 'head_only', 'type': 'head_only', 'abs': False})
 
     for run in model_runs:
         key = run['key']
@@ -1022,7 +1041,7 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
         # sc_pdf_path = os.path.join(base_path, f'{key}_shuffled_comparison.pdf')
         # save_shuffled_comparison_pdf(model, X_test, y_test, feature_names, current_config.get('lags'), importances, corrs, sc_pdf_path, device=device)
 
-    h5_savepath = os.path.join(base_path, 'pytorchGLM_predictions_v04_imurepair.h5')
+    h5_savepath = os.path.join(base_path, 'pytorchGLM_predictions_v07_multidropout.h5')
     # print('Writing to {}'.format(h5_savepath))
     fm2p.write_h5(h5_savepath, dict_out)
 
@@ -1032,20 +1051,24 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
 def pytorchGLM():
 
     # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
-    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings/'
-    recordings = fm2p.find(
-        '*fm*_preproc.h5',
-        cohort_dir
+    # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings/'
+    # recordings = fm2p.find(
+    #     '*fm*_preproc.h5',
+    #     cohort_dir
+    # )
+    # print('Found {} recordings.'.format(len(recordings)))
+
+    # recordings = recordings[7:]
+
+    # for ri, rec in enumerate(recordings):
+
+    #     print('Fitting models for recordings {} of {} ({}).'.format(ri+1, len(recordings), rec))
+
+    #     fit_test_pytorchGLM(rec)
+
+    fit_test_pytorchGLM(
+        '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251021_DMM_DMM061_pos04/fm1/251021_DMM_DMM061_fm_01_preproc.h5'
     )
-    print('Found {} recordings.'.format(len(recordings)))
-
-    recordings = recordings[7:]
-
-    for ri, rec in enumerate(recordings):
-
-        print('Fitting models for recordings {} of {} ({}).'.format(ri+1, len(recordings), rec))
-
-        fit_test_pytorchGLM(rec)
 
 
 if __name__ == '__main__':

@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import os
-import json
 import numpy as np
 import pandas as pd
-import skimage.transform
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
@@ -15,6 +13,7 @@ from skimage.measure import label, regionprops
 import scipy.stats
 from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
+import skimage.transform
 
 import fm2p
 
@@ -140,15 +139,12 @@ def get_labeled_array(image):
         0: 'boundary',
         1: 'outside',
         2: 'RL',
-        3: 'RLL',
-        4: 'MMA',
-        5: 'AM',
-        6: 'PM',
-        7: 'V1',
-        8: 'MMP',
-        9: 'AL',
-        10: 'LM',
-        11: 'P'
+        3: 'AM',
+        4: 'PM',
+        5: 'V1',
+        7: 'AL',
+        8: 'LM',
+        9: 'P'
     }
 
     labeled_array = label(image, connectivity=1)
@@ -246,52 +242,46 @@ def get_glm_keys(key):
     return None, None
 
 
-def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, labeled_array, label_map, glm_map):
+def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, labeled_array, label_map):
     
     # GLM keys
     imp_key, comp_key = get_glm_keys(key)
-    glm_cache = {}
     
     # 1. Collect all cell data first
     cells = []
     
     for animal_dir in animal_dirs:
-        if animal_dir not in data[key][cond]:
+        if animal_dir not in data.keys():
             continue
             
-        if 'transform' not in data[key][cond][animal_dir]:
+        if 'transform' not in data[animal_dir].keys():
              continue
 
-        for poskey in data[key][cond][animal_dir]['transform'].keys():
+        for poskey in data[animal_dir]['transform'].keys():
             if (animal_dir=='DMM056') and (cond=='d') and ((poskey=='pos15') or (poskey=='pos03')):
                 continue
 
             # Get cell data handling key mapping
-            isrel, mod, peak = get_cell_data(data[key][cond][animal_dir]['messentials'][poskey]['rdata'], key, cond)
+            isrel, mod, peak = get_cell_data(data[animal_dir]['messentials'][poskey]['rdata'], key, cond)
             
             if isrel is None:
                 continue
             
-            transform = data[key][cond][animal_dir]['transform'][poskey]
+            transform = data[animal_dir]['transform'][poskey]
+
+            model_data = data[animal_dir]['messentials'][poskey].get('model', {})
 
             for c in range(np.size(isrel, 0)):
                 # Retrieve GLM values for this cell if available
                 c_imp = np.nan
                 c_comp = np.nan
-                if glm_map and animal_dir in glm_map:
-                     try:
-                        pidx = int(poskey.replace('pos', '')) - 1
-                        if 0 <= pidx < len(glm_map[animal_dir]):
-                            fpath = glm_map[animal_dir][pidx]
-                            if fpath not in glm_cache:
-                                glm_cache[fpath] = fm2p.read_h5(fpath)
-                            gdata = glm_cache[fpath]
-                            if imp_key in gdata and c < len(gdata[imp_key]):
-                                c_imp = gdata[imp_key][c]
-                            if comp_key in gdata and c < len(gdata[comp_key]):
-                                c_comp = gdata[comp_key][c]
-                     except Exception:
-                         pass
+                
+                if isinstance(model_data, dict):
+                    if imp_key and imp_key in model_data and c < len(model_data[imp_key]):
+                        c_imp = model_data[imp_key][c]
+                    
+                    if comp_key and comp_key in model_data and c < len(model_data[comp_key]):
+                        c_comp = model_data[comp_key][c]
 
                 cells.append({
                     'x': transform[c, 2],
@@ -299,8 +289,8 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
                     'rel': isrel[c],
                     'mod': mod[c],
                     'peak': peak[c] if peak is not None else np.nan,
-                    'imp': c_imp,
-                    'comp': c_comp
+                    'imp': c_imp, # feature importance
+                    'comp': c_comp # single-component model performance
                 })
 
     if not cells:
@@ -311,12 +301,9 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
 
     # 2. Plot for each metric (Modulation, Peak, Importance, Component R2)
     metrics_to_plot = ['mod']
-    if not df['peak'].isna().all():
-        metrics_to_plot.append('peak')
-    if not df['imp'].isna().all():
-        metrics_to_plot.append('imp')
-    if not df['comp'].isna().all():
-        metrics_to_plot.append('comp')
+    metrics_to_plot.append('peak')
+    metrics_to_plot.append('imp')
+    metrics_to_plot.append('comp')
 
     for metric in metrics_to_plot:
         
@@ -328,38 +315,38 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
         elif metric == 'peak':
             # Peak
             if key in ['theta', 'phi', 'yaw', 'roll', 'pitch']:
-                cmap = cm.hsv
-                norm = colors.Normalize(vmin=-180, vmax=180)
+                cmap = cm.coolwarm
+                norm = colors.Normalize(vmin=-15, vmax=15)
                 label_str = f'{key} Peak (deg)'
             else:
                 # Velocities
                 limit = np.nanpercentile(np.abs(df['peak']), 95)
-                cmap = cm.coolwarm
+                cmap = cm.plasma
                 norm = colors.Normalize(vmin=-limit, vmax=limit)
                 label_str = f'{key} Peak'
         elif metric == 'imp':
-            cmap = cm.viridis
+            cmap = cm.plasma
             norm = colors.Normalize(vmin=0, vmax=0.1) # Importance usually small positive
             label_str = 'Variable Importance (Shuffle)'
         elif metric == 'comp':
-            cmap = cm.magma
+            cmap = cm.plasma
             norm = colors.Normalize(vmin=0, vmax=0.5) # R2
             label_str = 'Component Model R2'
 
-        fig = plt.figure(figsize=(6,6), dpi=300)
-        gs = GridSpec(5,5)
-        ax = fig.add_subplot(gs[1:5, 0:4])
+        # fig = plt.figure(figsize=(6,6), dpi=300)
+        # gs = GridSpec(5,5)
+        # ax = fig.add_subplot(gs[1:5, 0:4])
 
-        ax.imshow(gaussian_filter(zoom(uniref['overlay'][:,:,0], 2.555),2), cmap='jet', alpha=0.15)
-        ax.imshow(img_array)
-        fig.patch.set_alpha(0)
-        ax.patch.set_alpha(0)
+        # ax.imshow(gaussian_filter(zoom(uniref['overlay'][:,:,0], 2.555),2), cmap='jet', alpha=0.15)
+        # ax.imshow(img_array)
+        # fig.patch.set_alpha(0)
+        # ax.patch.set_alpha(0)
 
-        # Plot non-reliable cells
-        unrel = df[df['rel'] == 0]
-        ax.plot(unrel['x'], unrel['y'], '.', ms=3, color='gray', alpha=0.15)
+        # # Plot non-reliable cells
+        # unrel = df[df['rel'] == 0]
+        # ax.plot(unrel['x'], unrel['y'], '.', ms=3, color='gray', alpha=0.15)
 
-        # Plot reliable cells
+        # # Plot reliable cells
         if metric == 'peak':
             # Filter for peak map: reliable AND mod > 0.33
             rel = df[(df['rel'] == 1) & (df['mod'] > 0.33)]
@@ -367,154 +354,126 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
             # For others, just reliable
             rel = df[df['rel'] == 1]
             
-        if len(rel) > 0:
-            sc = ax.scatter(rel['x'], rel['y'], s=3, c=rel[metric], cmap=cmap, norm=norm)
+        # if len(rel) > 0:
+        #     sc = ax.scatter(rel['x'], rel['y'], s=3, c=rel[metric], cmap=cmap, norm=norm)
 
-        ax_histx  = fig.add_subplot(gs[0, 0:4], sharex=ax)
-        ax_histy  = fig.add_subplot(gs[1:5, 4], sharey=ax)
-        ax_cmap = fig.add_subplot(gs[0,4])
+        # ax_histx  = fig.add_subplot(gs[0, 0:4], sharex=ax)
+        # ax_histy  = fig.add_subplot(gs[1:5, 4], sharey=ax)
+        # ax_cmap = fig.add_subplot(gs[0,4])
 
-        if len(rel) > 0:
-            plot_running_median(ax_histx, rel['x'], rel[metric], 7, fb=True)
-            plot_running_median(ax_histy, rel['y'], rel[metric], 7, vertical=True, fb=True)
+        # if len(rel) > 0:
+        #     plot_running_median(ax_histx, rel['x'], rel[metric], 7, fb=True)
+        #     plot_running_median(ax_histy, rel['y'], rel[metric], 7, vertical=True, fb=True)
 
-        fig.suptitle(f'{key} {metric.capitalize()} ({cond_name})')
+        # fig.suptitle(f'{key} {metric.capitalize()} ({cond_name})')
 
-        ax.set_xlim([0,1024])
-        ax.set_ylim([0,1024])
-        ax.invert_yaxis()
+        # ax.set_xlim([0,1024])
+        # ax.set_ylim([0,1024])
+        # ax.invert_yaxis()
 
         # Colorbar
-        plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax_cmap, label=label_str)
+        # plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=ax_cmap, label=label_str)
         
+        # fig.tight_layout()
+        # pdf.savefig(fig)
+        # plt.close(fig)
+
+        # --- Region Analysis ---
+        if len(rel) == 0:
+            continue
+            
+        points_lt = list(zip(rel['x'], rel['y']))
+        results = get_region_for_points(labeled_array, points_lt, label_map)
+        
+        # Add region ID to dataframe
+        rel = rel.copy()
+        rel['region'] = results[:, 3]
+
+        # 1. Metric per Region (Scatter/Strip Plot)
+        fig, ax = plt.subplots(1, 1, figsize=(5,3.5), dpi=300)
+        if metric == 'mod':
+            ax.hlines(0.33, -1, 7, color='tab:grey', ls='--', alpha=0.56)
+            ax.hlines(0.5, -1, 7, color='tab:grey', ls='--', alpha=0.56)
+        
+        for i in range(6):
+            region_vals = rel[rel['region'] == i+2][metric]
+            if len(region_vals) > 0:
+                add_scatter_col(ax, i, region_vals)
+
+        ax.set_xticks(np.arange(6), labels=list(label_map.values())[2:8])
+        if metric == 'mod':
+            ax.set_ylim([0,0.75])
+        elif metric == 'comp':
+            ax.set_ylim([0,1.0])
+        ax.set_xlim([-.5,5.5])
+        ax.set_ylabel(label_str)
+        plt.title(f'{key} {metric} by Region ({cond_name})')
         fig.tight_layout()
         pdf.savefig(fig)
         plt.close(fig)
 
-        # Region Analysis (only for Modulation Index usually, but can do for both)
-        if metric == 'mod':
-            if len(rel) == 0:
-                continue
-                
-            points_lt = list(zip(rel['x'], rel['y']))
-            results = get_region_for_points(labeled_array, points_lt, label_map)
+        # 2. Map per Region (Spatial Scatter Colored by Value)
+        fig, axs = plt.subplots(2, 4, dpi=300, figsize=(12, 5))
+        axs = axs.flatten()
+
+        for i in range(7):
+            region_id = [2,3,4,5,7,8,9][i]
+            # region_id = i + 2  # Areas start at 2 in label_map
+            region_name = label_map.get(region_id, f'Region {region_id}')
             
-            # Add region ID to dataframe
-            rel = rel.copy()
-            rel['region'] = results[:, 3]
-
-            # Metric per Region
-            fig, ax = plt.subplots(1, 1, figsize=(5,3.5), dpi=300)
-            ax.hlines(0.33, -1, 7, color='tab:grey', ls='--', alpha=0.56)
-            ax.hlines(0.5, -1, 7, color='tab:grey', ls='--', alpha=0.56)
+            # Plot region mask in light grey to highlight white points (e.g. 0 in coolwarm)
+            region_mask = (labeled_array == region_id)
+            axs[i].imshow(region_mask, cmap='gray_r', alpha=0.4)
+            axs[i].imshow(labeled_array == 0, cmap='binary', alpha=0.1) # Boundaries
             
-            for i in range(6):
-                region_vals = rel[rel['region'] == i+2][metric]
-                if len(region_vals) > 0:
-                    add_scatter_col(ax, i, region_vals)
-
-            ax.set_xticks(np.arange(6), labels=list(label_map.values())[2:8])
-            ax.set_ylim([0,0.75])
-            ax.set_xlim([-.5,5.5])
-            ax.set_ylabel(label_str)
-            plt.title(f'{key} {metric} by Region ({cond_name})')
-            fig.tight_layout()
-            pdf.savefig(fig)
-            plt.close(fig)
-
-            # Only plot the region maps grid once (it shows cell locations, not values)
-            fig, axs = plt.subplots(2,5,dpi=300, figsize=(8,3))
-            axs = axs.flatten()
-
-            # Use all cells for location map
-            all_points = list(zip(df['x'], df['y']))
-            all_results = get_region_for_points(labeled_array, all_points, label_map)
+            # Plot cells for this region
+            region_cells = rel[rel['region'] == region_id]
+            if len(region_cells) > 0:
+                axs[i].scatter(region_cells['x'], region_cells['y'], s=2, c=region_cells[metric], cmap=cmap, norm=norm)
             
-            for i in range(10):
-                region_mask = all_results[:, 3] == i+1
-                ys = df.loc[region_mask, 'y']
-                xs = df.loc[region_mask, 'x']
+            axs[i].set_title(f'{region_name}')
+            axs[i].axis('off')
+            axs[i].set_ylim([1022, 0])
+            axs[i].set_xlim([0, 1022])
+        axs[-1].axis('off')
 
-                axs[i].imshow(labeled_array, cmap='jet')
-                axs[i].set_ylim(1022,0)
-                axs[i].set_xlim([0,1022])
-                if len(ys) > 0:
-                    axs[i].plot(xs, ys, 'k.', ms=0.3)
-                axs[i].set_title(f'all {label_map[i+1]} cells')
-                axs[i].axis('off')
-            
-            fig.suptitle(f'{key} Cells by Region')
-            fig.tight_layout()
-            pdf.savefig(fig)
-            plt.close(fig)
+        fig.suptitle(f'{key} {metric} Map by Region ({cond_name})')
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
 
-
-def get_glm_map(root_dir):
-    # Find all GLM files
-    glm_files = fm2p.find('pytorchGLM_predictions_v04_imurepair.h5', root_dir)
-    
-    # Organize by animal
-    glm_map = {}
-    for f in glm_files:
-        parts = f.split(os.sep)
-        animal = next((p for p in parts if p.startswith('DMM')), None)
-        if animal:
-            if animal not in glm_map:
-                glm_map[animal] = []
-            glm_map[animal].append(f)
-            
-    for animal in glm_map:
-        glm_map[animal].sort()
-    return glm_map
 
 
 def main():
 
     uniref = fm2p.read_h5('/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/DMM056/animal_reference_260115_10h-06m-52s.h5')
-    data = fm2p.read_h5('/home/dylan/Fast1/freely_moving_data/pooled_datasets/pooled_260127.h5')
+    data = fm2p.read_h5('/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/pooled_260208.h5')
     img = Image.open('/home/dylan/Desktop/V1_HVAs_trace.png').convert("RGBA")
     img_array = np.array(img)
     composite_basepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites'
-    
-    # GLM files
-    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
-    glm_map = get_glm_map(cohort_dir)
-
-    # Rename keys if necessary
-    key_map = {'gyro_x': 'dRoll', 'gyro_y': 'dPitch', 'gyro_z': 'dYaw'}
-    for old, new in key_map.items():
-        if old in data:
-            data[new] = data.pop(old)
 
     variables = ['theta', 'phi', 'dTheta', 'dPhi', 'pitch', 'yaw', 'roll', 'dPitch', 'dYaw', 'dRoll']
     conditions = ['l', 'd']
-    animal_dirs = ['DMM037', 'DMM041', 'DMM042', 'DMM056', 'DMM061']
+    animal_dirs = ['DMM037','DMM041', 'DMM042','DMM056', 'DMM061']
 
-    map_items = {
-        'pooled_data': data,
-        'uniref': uniref,
-        'img_array': img_array,
-        'composite_basepath': composite_basepath
-    }
+    # map_items = {
+    #     'pooled_data': data,
+    #     'uniref': uniref,
+    #     'img_array': img_array,
+    #     'composite_basepath': composite_basepath
+    # }
 
     labeled_array, label_map = get_labeled_array(img_array[:,:,0].clip(max=1))
 
-    with PdfPages('topography_summary.pdf') as pdf:
+    with PdfPages('topography_summary_v04.pdf') as pdf:
         
-        make_aligned_sign_maps(map_items, animal_dirs, pdf=pdf)
+        # make_aligned_sign_maps(map_items, animal_dirs, pdf=pdf)
 
         for key in tqdm(variables, desc="Processing variables"):
-            if key not in data:
-                print(f"Variable {key} not found in data, skipping.")
-                continue
-                
             for cond in conditions:
-                if cond not in data[key]:
-                    continue
-                
                 plot_variable_summary(
-                    pdf, data, key, cond, uniref, img_array, 
-                    animal_dirs, labeled_array, label_map, glm_map
+                    pdf, data, key, cond, uniref, img_array,
+                    animal_dirs, labeled_array, label_map
                 )
 
 

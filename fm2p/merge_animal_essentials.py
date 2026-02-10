@@ -30,37 +30,28 @@ def make_pooled_dataset():
     animal_dirs = ['DMM037', 'DMM041', 'DMM042', 'DMM056', 'DMM061']
     main_basepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites'
 
-    keys = ['theta','phi','dTheta','dPhi','pitch','yaw','roll','dPitch','dYaw','dRoll']
-    conds = ['l', 'd']
 
-    for key in keys:
-        pooled[key] = {}
-        for cond in conds:
-            pooled[key][cond] = {}
-            for animal_dir in animal_dirs:
-                pooled[key][cond][animal_dir] = {}
+    for animal_dir in animal_dirs:
+        pooled[animal_dir] = {}
 
-    for key in keys:
-        for cond in conds:
-            for animal_dir in animal_dirs:
+    for animal_dir in animal_dirs:
 
-                basepath = os.path.join(main_basepath, animal_dir)
+        basepath = os.path.join(main_basepath, animal_dir)
 
-                if animal_dir == 'DMM056':
-                    # this is actually local to global, not global to universal
-                    transform_g2u = fm2p.read_h5(fm2p.find('*aligned_composite_local_to_global_transform.h5', basepath, MR=True))
-                else:
-                    transform_g2u = fm2p.read_h5(fm2p.find('aligned_composite_*.h5', basepath, MR=True))
-                
-                messentials = fm2p.read_h5(fm2p.find('*_merged_essentials_v8.h5', basepath, MR=True))
+        if animal_dir == 'DMM056':
+            # this is actually local to global, not global to universal
+            transform_g2u = fm2p.read_h5(fm2p.find('*aligned_composite_local_to_global_transform.h5', basepath, MR=True))
+        else:
+            transform_g2u = fm2p.read_h5(fm2p.find('aligned_composite_*.h5', basepath, MR=True))
+        
+        messentials = fm2p.read_h5(fm2p.find('*_merged_essentials_v8.h5', basepath, MR=True))
 
-                pooled[key][cond][animal_dir]['messentials'] = messentials
-                pooled[key][cond][animal_dir]['transform'] = transform_g2u
+        pooled[animal_dir]['messentials'] = messentials
+        pooled[animal_dir]['transform'] = transform_g2u
 
     savepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/pooled_260208.h5'
     print('Writing {}'.format(savepath))
     fm2p.write_h5(savepath, pooled)
-
 
 
 def merge_animal_essentials():
