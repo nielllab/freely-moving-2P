@@ -1050,25 +1050,26 @@ def fit_test_pytorchGLM(data_input, save_dir=None):
 
 def pytorchGLM():
 
-    # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
+    # BATCH PROCESS
+    cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/'
     # cohort_dir = '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort01_recordings/'
-    # recordings = fm2p.find(
-    #     '*fm*_preproc.h5',
-    #     cohort_dir
-    # )
-    # print('Found {} recordings.'.format(len(recordings)))
+    recordings = fm2p.find(
+        '*fm*_preproc.h5',
+        cohort_dir
+    )
+    print('Found {} recordings.'.format(len(recordings)))
 
     # recordings = recordings[7:]
 
-    # for ri, rec in enumerate(recordings):
+    for ri, rec in enumerate(recordings):
+        print('Fitting models for recordings {} of {} ({}).'.format(ri+1, len(recordings), rec))
+        fit_test_pytorchGLM(rec)
 
-    #     print('Fitting models for recordings {} of {} ({}).'.format(ri+1, len(recordings), rec))
 
-    #     fit_test_pytorchGLM(rec)
-
-    fit_test_pytorchGLM(
-        '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251021_DMM_DMM061_pos04/fm1/251021_DMM_DMM061_fm_01_preproc.h5'
-    )
+    ##### TEST ON A SINGLE RECORDING
+    # fit_test_pytorchGLM(
+    #     '/home/dylan/Storage/freely_moving_data/_V1PPC/cohort02_recordings/cohort02_recordings/251021_DMM_DMM061_pos04/fm1/251021_DMM_DMM061_fm_01_preproc.h5'
+    # )
 
 
 if __name__ == '__main__':

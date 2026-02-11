@@ -10,6 +10,7 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter, zoom
 from skimage.measure import label
 import scipy.stats
+from scipy.interpolate import griddata
 from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 import skimage.transform
@@ -166,7 +167,7 @@ def get_region_for_points(labeled_array, points_to_check, label_map):
 
 
 def get_cell_data(rdata, key, cond):
-    # Map key if necessary
+
     use_key = key
     reverse_map = {'dRoll': 'gyro_x', 'dPitch': 'gyro_y', 'dYaw': 'gyro_z'}
     if key in reverse_map:
@@ -176,7 +177,6 @@ def get_cell_data(rdata, key, cond):
     mod = None
     peak = None
 
-    # Try key
     isrel_key = f'{use_key}_{cond}_isrel'
     mod_key = f'{use_key}_{cond}_mod'
     
@@ -184,19 +184,17 @@ def get_cell_data(rdata, key, cond):
         isrel = rdata[isrel_key]
         mod = rdata[mod_key]
     
-    # Try to get peak data
     pref_key = f'{use_key}_{cond}_pref'
     if pref_key in rdata:
         peak = rdata[pref_key]
     else:
-        # Calculate from tuning if available
         tuning_key = f'{use_key}_1dtuning'
         bins_key = f'{use_key}_1dbins'
         
         if tuning_key in rdata and bins_key in rdata:
             tuning = rdata[tuning_key]
             bins = rdata[bins_key]
-            # Assuming tuning shape (n_cells, n_bins, 2) where 0=dark, 1=light
+
             cond_idx = 1 if cond == 'l' else 0
             
             if tuning.ndim == 3 and tuning.shape[2] > cond_idx:
@@ -207,9 +205,7 @@ def get_cell_data(rdata, key, cond):
 
 
 def get_glm_keys(key):
-    # Map topography key to GLM keys
-    # Returns (importance_key_suffix, component_r2_key)
-    
+
     map_imp = {
         'theta': 'theta',
         'phi': 'phi',
@@ -228,12 +224,30 @@ def get_glm_keys(key):
     return None
 
 
+def create_smoothed_map(x, y, values, shape=(1024, 1024), sigma=10):
+    
+    if len(values) < 4:
+        return np.full(shape, np.nan)
+
+    grid_y, grid_x = np.mgrid[0:shape[0], 0:shape[1]]
+    points = np.column_stack((y, x))
+    
+    smoothed = griddata(points, values, (grid_y, grid_x), method='linear')
+    
+    mask_nan = np.isnan(smoothed)
+    if np.any(mask_nan):
+        smoothed_nearest = griddata(points, values, (grid_y, grid_x), method='nearest')
+        smoothed[mask_nan] = smoothed_nearest[mask_nan]
+    
+    smoothed = gaussian_filter(smoothed, sigma=sigma, mode='nearest')
+    
+    return smoothed
+
+
 def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, labeled_array, label_map):
     
-    # GLM keys
     imp_key = get_glm_keys(key)
     
-    # 1. Collect all cell data first
     cells = []
     
     for animal_dir in animal_dirs:
@@ -247,7 +261,6 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
             if (animal_dir=='DMM056') and (cond=='d') and ((poskey=='pos15') or (poskey=='pos03')):
                 continue
 
-            # Get cell data handling key mapping
             isrel, mod, peak = get_cell_data(data[animal_dir]['messentials'][poskey]['rdata'], key, cond)
             
             if isrel is None:
@@ -258,7 +271,6 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
             model_data = data[animal_dir]['messentials'][poskey].get('model', {})
 
             for c in range(np.size(isrel, 0)):
-                # Retrieve GLM values for this cell if available
                 c_imp = np.nan
                 
                 if isinstance(model_data, dict):
@@ -280,54 +292,45 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
     df = pd.DataFrame(cells)
     cond_name = 'Light' if cond == 'l' else 'Dark'
 
-    # 2. Plot for each metric (Modulation, Peak, Importance)
     metrics_to_plot = ['mod']
     metrics_to_plot.append('peak')
     metrics_to_plot.append('imp')
 
     for metric in metrics_to_plot:
         
-        # Determine visualization properties
         if metric == 'mod':
             cmap = cm.plasma
             norm = colors.Normalize(vmin=0, vmax=0.5)
             label_str = 'Modulation Index'
         elif metric == 'peak':
-            # Peak
             if key in ['theta', 'phi', 'yaw', 'roll', 'pitch']:
                 cmap = cm.coolwarm
                 norm = colors.Normalize(vmin=-15, vmax=15)
                 label_str = f'{key} Peak (deg)'
             else:
-                # Velocities
                 limit = np.nanpercentile(np.abs(df['peak']), 95)
                 cmap = cm.plasma
                 norm = colors.Normalize(vmin=-limit, vmax=limit)
                 label_str = f'{key} Peak'
         elif metric == 'imp':
             cmap = cm.plasma
-            norm = colors.Normalize(vmin=0, vmax=0.1) # Importance usually small positive
+            norm = colors.Normalize(vmin=0, vmax=0.1)
             label_str = 'Variable Importance (Shuffle)'
 
         if metric == 'peak':
-            # Filter for peak map: reliable AND mod > 0.33
             rel = df[(df['rel'] == 1) & (df['mod'] > 0.33)]
         else:
-            # For others, just reliable
             rel = df[df['rel'] == 1]
 
-        # --- Region Analysis ---
         if len(rel) == 0:
             continue
             
         points_lt = list(zip(rel['x'], rel['y']))
         results = get_region_for_points(labeled_array, points_lt, label_map)
         
-        # Add region ID to dataframe
         rel = rel.copy()
         rel['region'] = results[:, 3]
 
-        # 1. Metric per Region (Scatter/Strip Plot)
         fig, ax = plt.subplots(1, 1, figsize=(5,3.5), dpi=300)
         if metric == 'mod':
             ax.hlines(0.33, -1, 7, color='tab:grey', ls='--', alpha=0.56)
@@ -348,7 +351,6 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
         pdf.savefig(fig)
         plt.close(fig)
 
-        # 2. Map per Region (Spatial Scatter Colored by Value)
         fig, axs = plt.subplots(2, 2, dpi=300, figsize=(8,6))
         axs = axs.flatten()
 
@@ -356,25 +358,49 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
             region_id = [2,3,4,5][i]
             region_name = label_map.get(region_id, f'Region {region_id}')
             
-            # Plot region mask in light grey to highlight white points (e.g. 0 in coolwarm)
             region_mask = (labeled_array == region_id)
             axs[i].imshow(region_mask, cmap='gray_r', alpha=0.4)
             axs[i].imshow(labeled_array == 0, cmap='binary', alpha=0.1) # Boundaries
+            axs[i].contour(region_mask, levels=[0.5], colors='k', linestyles='--', linewidths=0.5)
             
-            # Plot cells for this region
             region_cells = rel[rel['region'] == region_id]
             if len(region_cells) > 0:
                 axs[i].scatter(region_cells['x'], region_cells['y'], s=2, c=region_cells[metric], cmap=cmap, norm=norm)
             
             axs[i].set_title(f'{region_name}')
             axs[i].axis('off')
-            axs[i].set_ylim([1022, 0])
-            axs[i].set_xlim([0, 1022])
-        
-        # axs[3].axis('off')
-        # plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs[3], label=label_str, fraction=0.5)
+            axs[i].set_ylim([labeled_array.shape[0], 0])
+            axs[i].set_xlim([0, labeled_array.shape[1]])
 
         fig.suptitle(f'{key} {metric} Map by Region ({cond_name})')
+        fig.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig, axs = plt.subplots(2, 2, dpi=300, figsize=(8,6))
+        axs = axs.flatten()
+
+        for i in range(4):
+            region_id = [2,3,4,5][i]
+            region_name = label_map.get(region_id, f'Region {region_id}')
+            
+            region_mask = (labeled_array == region_id)
+            axs[i].imshow(labeled_array == 0, cmap='binary', alpha=0.1)
+            axs[i].contour(region_mask, levels=[0.5], colors='k', linestyles='--', linewidths=0.5)
+            
+            region_cells = rel[rel['region'] == region_id]
+            if len(region_cells) > 0:
+                smoothed = create_smoothed_map(region_cells['x'].values, region_cells['y'].values, region_cells[metric].values, shape=labeled_array.shape)
+                smoothed[~region_mask] = np.nan
+                axs[i].imshow(smoothed, cmap=cmap, norm=norm)
+            
+            axs[i].set_title(f'{region_name}')
+            axs[i].axis('off')
+            axs[i].set_ylim([labeled_array.shape[0], 0])
+            axs[i].set_xlim([0, labeled_array.shape[1]])
+
+        fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=label_str, fraction=0.05, shrink=0.6)
+        fig.suptitle(f'{key} {metric} Smoothed Map by Region ({cond_name})')
         fig.tight_layout()
         pdf.savefig(fig)
         plt.close(fig)
@@ -382,13 +408,12 @@ def plot_variable_summary(pdf, data, key, cond, uniref, img_array, animal_dirs, 
 
 def plot_model_performance(pdf, data, uniref, img_array, animal_dirs, labeled_array, label_map):
     
-    models = ['velocity_only', 'position_only', 'eyes_only', 'head_only']
+    models = ['full', 'velocity_only', 'position_only', 'eyes_only', 'head_only']
     metrics = ['r2', 'corrs']
     
     for model in models:
         for metric in metrics:
             
-            # Collect data for this model/metric
             cells = []
             for animal_dir in animal_dirs:
                 if animal_dir not in data: continue
@@ -412,16 +437,15 @@ def plot_model_performance(pdf, data, uniref, img_array, animal_dirs, labeled_ar
                         })
             
             if not cells:
+                print(f"No data found for {model} {metric}")
                 continue
                 
             df = pd.DataFrame(cells)
             
-            # Region mapping
             points_lt = list(zip(df['x'], df['y']))
             results = get_region_for_points(labeled_array, points_lt, label_map)
             df['region'] = results[:, 3]
             
-            # Visualization settings
             cmap = cm.plasma
             if metric == 'r2':
                 norm = colors.Normalize(vmin=0, vmax=0.5)
@@ -430,31 +454,28 @@ def plot_model_performance(pdf, data, uniref, img_array, animal_dirs, labeled_ar
                 norm = colors.Normalize(vmin=0, vmax=0.8)
                 label_str = f'{model} Correlation'
 
-            # 1. Map per Region (Spatial Scatter Colored by Value)
             fig, axs = plt.subplots(2, 2, dpi=300, figsize=(8,8))
             axs = axs.flatten()
 
-            for i in range(3):
-                region_id = [5,4,3][i]
+            for i in range(4):
+                region_id = [2,3,4,5][i]
                 region_name = label_map.get(region_id, f'Region {region_id}')
-                
-                # Plot region mask in light grey
+
                 region_mask = (labeled_array == region_id)
                 axs[i].imshow(region_mask, cmap='gray_r', alpha=0.4)
-                axs[i].imshow(labeled_array == 0, cmap='binary', alpha=0.1) # Boundaries
+                axs[i].imshow(labeled_array == 0, cmap='binary', alpha=0.1)
+                axs[i].contour(region_mask, levels=[0.5], colors='k', linestyles='--', linewidths=0.5)
                 
-                # Plot cells for this region
                 region_cells = df[df['region'] == region_id]
                 if len(region_cells) > 0:
                     axs[i].scatter(region_cells['x'], region_cells['y'], s=2, c=region_cells['val'], cmap=cmap, norm=norm)
                 
                 axs[i].set_title(f'{region_name}')
                 axs[i].axis('off')
-                axs[i].set_ylim([1022, 0])
-                axs[i].set_xlim([0, 1022])
+                axs[i].set_ylim([labeled_array.shape[0], 0])
+                axs[i].set_xlim([0, labeled_array.shape[1]])
             
-            axs[3].axis('off')
-            plt.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs[3], label=label_str, fraction=0.5)
+            fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=axs, label=label_str, fraction=0.05, shrink=0.6)
 
             fig.suptitle(f'{label_str} Map by Region')
             fig.tight_layout()
@@ -468,25 +489,15 @@ def main():
     data = fm2p.read_h5('/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites/pooled_260208.h5')
     img = Image.open('/home/dylan/Desktop/V1_HVAs_trace.png').convert("RGBA")
     img_array = np.array(img)
-    composite_basepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites'
+    # composite_basepath = '/home/dylan/Storage/freely_moving_data/_V1PPC/mouse_composites'
 
     variables = ['theta', 'phi', 'dTheta', 'dPhi', 'pitch', 'yaw', 'roll', 'dPitch', 'dYaw', 'dRoll']
-    # conditions = ['l', 'd']
     conditions = ['l']
     animal_dirs = ['DMM037','DMM041', 'DMM042','DMM056', 'DMM061']
-
-    # map_items = {
-    #     'pooled_data': data,
-    #     'uniref': uniref,
-    #     'img_array': img_array,
-    #     'composite_basepath': composite_basepath
-    # }
-
     labeled_array, label_map = get_labeled_array(img_array[:,:,0].clip(max=1))
 
-    with PdfPages('topography_summary_v05.pdf') as pdf:
-        
-        # make_aligned_sign_maps(map_items, animal_dirs, pdf=pdf)
+    with PdfPages('topography_summary_v06.pdf') as pdf:
+    
 
         for key in tqdm(variables, desc="Processing variables"):
             for cond in conditions:
@@ -495,7 +506,6 @@ def main():
                     animal_dirs, labeled_array, label_map
                 )
 
-        # Plot model performance summaries (independent of variable/condition loop)
         plot_model_performance(
             pdf, data, uniref, img_array, animal_dirs, labeled_array, label_map
         )
